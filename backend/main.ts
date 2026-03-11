@@ -483,9 +483,20 @@ function streamChat(
 
   return new ReadableStream({
     async start(controller) {
+      let closed = false;
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        try {
+          controller.close();
+        } catch {
+          // Ignore double-close/closed stream errors.
+        }
+      };
+
       try {
         if (signal?.aborted) {
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -510,7 +521,7 @@ function streamChat(
         if (!signal?.aborted) controller.enqueue(sseEvent("done", { requestId: reqId }));
       } catch (error) {
         if (signal?.aborted || isAbortLikeError(error)) {
-          controller.close();
+          safeClose();
           return;
         }
         logError("AI_STREAM", "Chat stream failed", {
@@ -524,7 +535,7 @@ function streamChat(
         controller.enqueue(sseEvent("error", { message, requestId: reqId }));
       } finally {
         onClose?.();
-        controller.close();
+        safeClose();
       }
     }
   });
@@ -620,7 +631,6 @@ async function handleChatStream(request: Request, reqId: string) {
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
         ...corsHeaders()
       }
     });
