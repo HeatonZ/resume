@@ -2,6 +2,7 @@
 import type { ChatCompletionMessageParam } from "npm:openai/resources/chat/completions";
 import { extname, fromFileUrl, join, normalize } from "jsr:@std/path";
 import { loadSync } from "jsr:@std/dotenv";
+import { AbuseGuard, extractClientIp, loadGuardConfig, validateChatInput } from "./abuse_guard.ts";
 
 function loadEnvFiles() {
   for (const envPath of [".env.local", ".env"]) {
@@ -128,11 +129,23 @@ const ZHIPU_BASE_URL = Deno.env.get("ZHIPU_BASE_URL") || "https://open.bigmodel.
 const ZHIPU_MODEL = Deno.env.get("ZHIPU_MODEL") || "GLM-4.7-Flash";
 const DEFAULT_CHAT_PROVIDER = (Deno.env.get("CHAT_PROVIDER") || "").trim().toLowerCase();
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
+const GUARD_CONFIG = loadGuardConfig((name) => Deno.env.get(name));
 
 const resumeJsonPath = new URL("../data/resume.json", import.meta.url);
 const frontendDistFsPath = fromFileUrl(new URL("../frontend/dist/", import.meta.url));
 const encoder = new TextEncoder();
 const openAIClients = new Map<string, OpenAI>();
+const kv =
+  GUARD_CONFIG.enabled && typeof Deno.openKv === "function"
+    ? await Deno.openKv().catch((error) => {
+        logError("GUARD_KV", "Failed to open Deno KV", { error: serializeError(error) });
+        return null;
+      })
+    : null;
+if (GUARD_CONFIG.enabled && typeof Deno.openKv !== "function") {
+  logError("GUARD_KV", "Deno.openKv is unavailable; start with --unstable-kv or run on Deno Deploy", {});
+}
+const abuseGuard = new AbuseGuard(GUARD_CONFIG, kv);
 
 type ChatProvider = "kimi" | "zhipu";
 type ChatHistoryItem = { role: string; content: string };
@@ -152,18 +165,43 @@ function corsHeaders() {
   };
 }
 
-function jsonResponse(payload: unknown, status = 200) {
+function jsonResponse(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
+      ...extraHeaders,
       ...corsHeaders()
     }
   });
 }
 
-function errorResponse(reqId: string, status: number, code: string, message: string) {
-  return jsonResponse({ error: message, code, requestId: reqId }, status);
+function errorResponse(
+  reqId: string,
+  status: number,
+  code: string,
+  message: string,
+  options: { headers?: Record<string, string>; meta?: Record<string, unknown> } = {}
+) {
+  return jsonResponse({ error: message, code, requestId: reqId, ...options.meta }, status, options.headers || {});
+}
+
+function logGuardRejection(
+  reqId: string,
+  path: string,
+  ip: string,
+  code: string,
+  limitType: string,
+  remaining: number | null = null
+) {
+  logError("API_GUARD", "Request rejected by guard", {
+    requestId: reqId,
+    path,
+    ip,
+    code,
+    limitType,
+    remaining
+  });
 }
 
 async function readResumeJson() {
@@ -366,13 +404,56 @@ function getOpenAIClient(config: ProviderConfig) {
   return client;
 }
 
+function extractAssistantText(completion: any) {
+  const choice = completion?.choices?.[0];
+  const content = choice?.message?.content;
+  if (typeof content === "string" && content.trim()) return content.trim();
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part: any) => {
+        if (!part) return "";
+        if (typeof part === "string") return part;
+        if (typeof part.text === "string") return part.text;
+        return "";
+      })
+      .join("")
+      .trim();
+    if (text) return text;
+  }
+
+  const refusal = choice?.message?.refusal;
+  if (typeof refusal === "string" && refusal.trim()) return refusal.trim();
+
+  if (typeof completion?.output_text === "string" && completion.output_text.trim()) {
+    return completion.output_text.trim();
+  }
+
+  return "";
+}
+
 async function callChatCompletion(messages: ChatCompletionMessageParam[], provider: ChatProvider, reqId: string) {
   const config = getProviderConfig(provider);
   assertProviderConfig(config);
   const client = getOpenAIClient(config);
   try {
-    const completion = await client.chat.completions.create({ model: config.model, temperature: 0.3, messages });
-    return completion.choices?.[0]?.message?.content?.trim() || "暂时没有可用回复。";
+    const completion = await client.chat.completions.create({
+      model: config.model,
+      temperature: 0.3,
+      max_tokens: GUARD_CONFIG.maxOutputTokens,
+      messages
+    });
+    const text = extractAssistantText(completion);
+    if (text) return text;
+
+    logError("AI_CHAT", "Empty completion content", {
+      requestId: reqId,
+      provider: config.provider,
+      model: config.model,
+      finishReason: completion?.choices?.[0]?.finish_reason,
+      choiceCount: Array.isArray(completion?.choices) ? completion.choices.length : 0
+    });
+    return "暂时没有可用回复。";
   } catch (error) {
     logError("AI_CHAT", "Chat completion failed", {
       requestId: reqId,
@@ -393,7 +474,8 @@ function streamChat(
   refs: any[],
   reqId: string,
   provider: ChatProvider,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onClose?: () => void
 ) {
   const config = getProviderConfig(provider);
   assertProviderConfig(config);
@@ -412,6 +494,7 @@ function streamChat(
           {
             model: config.model,
             temperature: 0.3,
+            max_tokens: GUARD_CONFIG.maxOutputTokens,
             messages,
             stream: true
           },
@@ -440,6 +523,7 @@ function streamChat(
         const message = error instanceof Error ? error.message : "流式响应失败";
         controller.enqueue(sseEvent("error", { message, requestId: reqId }));
       } finally {
+        onClose?.();
         controller.close();
       }
     }
@@ -455,11 +539,9 @@ async function parseChatPayload(request: Request) {
 }
 
 async function prepareChatContext(userMessage: string, history: ChatHistoryItem[]) {
-  if (!userMessage) {
-    const error = new Error("message 不能为空");
-    // @ts-ignore custom runtime code
-    error.code = "INVALID_REQUEST";
-    throw error;
+  const inputDecision = await validateChatInput(userMessage, history.length, GUARD_CONFIG);
+  if (!inputDecision.ok) {
+    throw createError(inputDecision.message || "请求参数不合法", inputDecision.code || "INVALID_REQUEST");
   }
 
   const { profile, chunks } = await getRuntimeContext();
@@ -507,7 +589,8 @@ async function handleChat(request: Request, reqId: string) {
     });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "CHAT_RUNTIME_ERROR";
-    return errorResponse(reqId, code === "INVALID_REQUEST" ? 400 : 500, code, message);
+    const status = ["INVALID_REQUEST", "MESSAGE_TOO_LARGE", "HISTORY_TOO_LARGE", "INVALID_PROVIDER"].includes(code) ? 400 : 500;
+    return errorResponse(reqId, status, code, message);
   }
 }
 
@@ -516,7 +599,23 @@ async function handleChatStream(request: Request, reqId: string) {
     const { userMessage, history, provider } = await parseChatPayload(request);
     const resolvedProvider = resolveProvider(provider);
     const { refs, messages } = await prepareChatContext(userMessage, history);
-    return new Response(streamChat(messages, refs, reqId, resolvedProvider, request.signal), {
+    const streamController = new AbortController();
+    const timeout = setTimeout(() => {
+      logError("API_CHAT_STREAM", "Stream duration guard reached", {
+        requestId: reqId,
+        maxSeconds: GUARD_CONFIG.streamMaxDurationSeconds
+      });
+      streamController.abort("STREAM_DURATION_EXCEEDED");
+    }, GUARD_CONFIG.streamMaxDurationSeconds * 1000);
+    request.signal.addEventListener(
+      "abort",
+      () => {
+        streamController.abort("REQUEST_ABORTED");
+      },
+      { once: true }
+    );
+
+    return new Response(streamChat(messages, refs, reqId, resolvedProvider, streamController.signal, () => clearTimeout(timeout)), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -533,7 +632,8 @@ async function handleChatStream(request: Request, reqId: string) {
     });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "CHAT_STREAM_RUNTIME_ERROR";
-    return errorResponse(reqId, code === "INVALID_REQUEST" ? 400 : 500, code, message);
+    const status = ["INVALID_REQUEST", "MESSAGE_TOO_LARGE", "HISTORY_TOO_LARGE", "INVALID_PROVIDER"].includes(code) ? 400 : 500;
+    return errorResponse(reqId, status, code, message);
   }
 }
 
@@ -557,14 +657,27 @@ async function serveFrontend(pathname: string, reqId: string) {
   }
 }
 
-Deno.serve({ hostname: API_HOST, port: API_PORT }, async (request) => {
+Deno.serve({ hostname: API_HOST, port: API_PORT }, async (request, info) => {
   const url = new URL(request.url);
   const reqId = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  const ip = extractClientIp(request, info?.remoteAddr);
 
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
   if (request.method === "GET" && url.pathname === "/api/profile") return handleProfile(request, reqId);
-  if (request.method === "POST" && url.pathname === "/api/chat") return handleChat(request, reqId);
-  if (request.method === "POST" && url.pathname === "/api/chat/stream") return handleChatStream(request, reqId);
+  if (request.method === "POST" && (url.pathname === "/api/chat" || url.pathname === "/api/chat/stream")) {
+    const decision = await abuseGuard.evaluate(ip);
+    if (!decision.ok) {
+      logGuardRejection(reqId, url.pathname, ip, decision.code || "GUARD_REJECTED", decision.limitType || "unknown", decision.remaining ?? null);
+      const headers: Record<string, string> = {};
+      if (decision.retryAfter) headers["Retry-After"] = String(decision.retryAfter);
+      return errorResponse(reqId, decision.status || 429, decision.code || "RATE_LIMIT_REJECTED", decision.message || "请求被拒绝", {
+        headers,
+        meta: { limitType: decision.limitType, remaining: decision.remaining }
+      });
+    }
+    if (url.pathname === "/api/chat") return handleChat(request, reqId);
+    return handleChatStream(request, reqId);
+  }
 
   if (MODE === "full" && request.method === "GET" && !url.pathname.startsWith("/api/")) {
     return serveFrontend(url.pathname, reqId);

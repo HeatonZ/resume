@@ -1,57 +1,66 @@
-# AI 简历名片应用
+﻿# AI 简历名片应用
 
 ## 目录结构
 
-- `frontend/`: Vue 3 + Vite 前端
-- `backend/`: Deno 后端（API + 生产静态托管）
-- `data/`: 简历数据源（`resume.json`）
+- `frontend/`：Vue 3 + Vite 前端
+- `backend/`：Deno 后端（API + 生产静态托管）
+- `data/`：简历数据源（`resume.json`）
 
 ## 运行模式
 
-- 开发模式：前后端分离运行
-- 前端：`http://localhost:5173`
-- 后端 API：`http://localhost:8000`
-- 生产模式：后端直接托管 `frontend/dist`，并提供 `/api/*`
+- 开发模式（前后端分离）
+  - 前端：`http://localhost:5173`
+  - 后端 API：`http://localhost:8000`
+- 生产模式
+  - 后端直接托管 `frontend/dist`
+  - 同时提供 `/api/*`
 
 ## 环境变量
 
-支持 `.env` / `.env.local`（后端自动加载），示例见 `.env.example`。
+后端会自动加载 `.env` / `.env.local`，示例见 `.env.example`。
 
-关键变量：
-
+常用变量：
 - `MOONSHOT_API_KEY`
 - `MOONSHOT_BASE_URL`
 - `MOONSHOT_MODEL`
+- `ZHIPU_API_KEY`
+- `ZHIPU_BASE_URL`
+- `ZHIPU_MODEL`
+- `CHAT_PROVIDER`
 - `API_HOST`
 - `API_PORT`
 - `ALLOWED_ORIGIN`
 
-## 根目录统一命令（Deno）
+## 常用命令（Deno）
 
-### 开发（前后端分离）
+开发（前后端一起启动）：
 
 ```powershell
 deno task dev
 ```
 
-### 仅启动后端 API（开发）
+仅启动后端 API：
 
 ```powershell
 deno task dev:api
 ```
 
-### 构建前端
+构建前端：
 
 ```powershell
 deno task build
 ```
 
-会在 `frontend/dist` 生成构建产物。
-
-### 生产启动（托管 frontend/dist + API）
+生产启动（托管 `frontend/dist` + API）：
 
 ```powershell
 deno task start
+```
+
+本地防护仿真：
+
+```powershell
+deno task simulate:guard
 ```
 
 ## API
@@ -60,18 +69,18 @@ deno task start
 - `POST /api/chat`
 - `POST /api/chat/stream`（SSE 流式）
 
-## Chat Provider Routing
+## Provider 路由
 
-Backend now supports two OpenAI-compatible providers:
-- `kimi` (default)
-- `zhipu` (default model `GLM-4.7-Flash`)
+后端支持两个 OpenAI 兼容提供方：
+- `kimi`（默认）
+- `zhipu`（默认模型 `GLM-4.7-Flash`）
 
-Provider selection priority:
-1. request body `provider`
-2. env `CHAT_PROVIDER`
-3. fallback `kimi`
+选择优先级：
+1. 请求体里的 `provider`
+2. 环境变量 `CHAT_PROVIDER`
+3. 默认回退 `kimi`
 
-Request example:
+请求示例：
 
 ```json
 {
@@ -81,8 +90,9 @@ Request example:
 }
 ```
 
-New environment variables:
-- `ZHIPU_API_KEY`
-- `ZHIPU_BASE_URL` (default: `https://open.bigmodel.cn/api/paas/v4`)
-- `ZHIPU_MODEL` (default: `GLM-4.7-Flash`)
-- `CHAT_PROVIDER` (`kimi` or `zhipu`)
+## 防护仿真输出说明
+
+执行 `deno task simulate:guard` 后，重点看这几行：
+- `phase=staging-loose`：低流量场景，用于观察误伤率是否足够低。
+- `phase=prod-stage-1/2/3`：逐步收紧阈值后，`allowed` 应持续下降。
+- 出现 `simulation=passed` 表示本地仿真通过。
