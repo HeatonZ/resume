@@ -1,0 +1,86 @@
+﻿import { defineStore } from "pinia";
+import { sendChat } from "../api/chat";
+import { fetchProfile } from "../api/profile";
+
+function emptyProfile() {
+  return {
+    name: "Candidate",
+    headline: "",
+    location: "",
+    email: "",
+    phone: "",
+    summary: "",
+    skills: [],
+    highlights: []
+  };
+}
+
+function buildSuggestions(name) {
+  const who = name || "这位候选人";
+  return [
+    `请介绍一下${who}的职业背景`,
+    `${who}最擅长哪些技术方向？`,
+    `${who}做过哪些代表项目？`,
+    `如果用 1 分钟介绍${who}，你会怎么说？`
+  ];
+}
+
+function buildWelcome(profile) {
+  const who = profile?.name || "这位候选人";
+  const headline = profile?.headline ? `，当前定位是${profile.headline}` : "";
+  return `你好，我是${who}的 AI 助手${headline}。你可以问我他的经历、技能和项目。`;
+}
+
+export const useChatStore = defineStore("chat", {
+  state: () => ({
+    profile: emptyProfile(),
+    initialized: false,
+    messages: [],
+    pending: false,
+    error: "",
+    suggestions: []
+  }),
+  actions: {
+    async init() {
+      if (this.initialized) return;
+
+      try {
+        const data = await fetchProfile();
+        this.profile = {
+          ...emptyProfile(),
+          ...data,
+          skills: Array.isArray(data?.skills) ? data.skills.filter(Boolean) : [],
+          highlights: Array.isArray(data?.highlights) ? data.highlights.filter(Boolean) : []
+        };
+      } catch (err) {
+        this.error = err.message || "加载资料失败";
+        this.profile = emptyProfile();
+      }
+
+      this.suggestions = buildSuggestions(this.profile.name);
+      this.messages = [{ role: "assistant", content: buildWelcome(this.profile) }];
+      this.initialized = true;
+    },
+
+    async submit(rawInput) {
+      const message = String(rawInput || "").trim();
+      if (!message || this.pending) return;
+
+      this.error = "";
+      this.messages.push({ role: "user", content: message });
+      this.pending = true;
+
+      const history = this.messages.slice(0, -1).map(({ role, content }) => ({ role, content }));
+
+      try {
+        const data = await sendChat({ message, history });
+        this.messages.push({ role: "assistant", content: data.reply || "暂时没有可用回复。" });
+      } catch (err) {
+        this.error = err.message || "请求失败";
+        this.messages.push({ role: "assistant", content: `请求失败：${this.error}` });
+      } finally {
+        this.pending = false;
+      }
+    }
+  }
+});

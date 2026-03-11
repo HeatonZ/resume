@@ -1,0 +1,456 @@
+{
+  "picture": {
+    "hidden": false,
+    "url": "https://rxresu.me/uploads/019c93b0-0b18-71bd-8848-23890a4e6358/pictures/1772418019186.webp",
+    "size": 100,
+    "rotation": 0,
+    "aspectRatio": 0.8,
+    "borderRadius": 0,
+    "borderColor": "rgba(0, 0, 0, 0.5)",
+    "borderWidth": 0,
+    "shadowColor": "rgba(0, 0, 0, 0.5)",
+    "shadowWidth": 0
+  },
+  "basics": {
+    "name": "郑尚丰",
+    "headline": "前端工程师",
+    "email": "905342035@qq.com",
+    "phone": "18503007989",
+    "location": "广东深圳",
+    "website": {
+      "url": "",
+      "label": ""
+    },
+    "customFields": []
+  },
+  "summary": {
+    "title": "",
+    "columns": 1,
+    "hidden": false,
+    "content": "<p>我擅长从0到1独立搭建高性能、可维护的大型前端系统，精通 Vue3 + TypeScript 架构设计。主导可视化业务逻辑编排平台开发，基于 LogicFlow 深度定制与 JSON-Schema 配置化动态表单引擎，将新业务接入效率提升约40%</p><p>工程化能力突出，熟练 Vite/Webpack，曾主导 Monorepo 重构与技术栈演进；开发 Node.js BFF 层聚合微服务并智能缓存，将关键页面加载时间从3秒优化至800ms以内</p><p>对 AI 工程化有实践经验，使用 LangChain 做数据转换并预研智能节点。</p><p>有Python/Java 基础，可快速上手 React、NestJS 等技术栈</p>"
+  },
+  "sections": {
+    "profiles": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    },
+    "experience": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": [
+        {
+          "id": "019c93bc-b914-749c-afb7-7acd443af694",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "company": "深圳晶泰科技有限公司",
+          "position": "高级前端开发工程师",
+          "location": "深圳",
+          "period": "2021/11 - 2026/01",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<ol><li><p>负责基于Vue3框架的核心业务系统的设计和实现</p></li><li><p>负责核心模块、组件的设计、重构、封装和优化</p></li><li><p>负责搭建错误监控系统和前端自动化体系</p></li><li><p>参与和维护前端开发规范和相关的技术文档编写</p></li><li><p>与后端、产品、设计、测试团队紧密合作，推动项目落地和持续迭代</p></li></ol><p></p>",
+          "roles": []
+        },
+        {
+          "id": "019c93bd-9963-7353-a749-e3e5d834fa58",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "company": "深圳穿越医疗科技有限公司",
+          "position": "前端开发工程师",
+          "location": "深圳",
+          "period": "2019/07 - 2021/10",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<ol><li><p>负责基于Angular的核心业务系统开发</p></li><li><p>根据产品需求独立完成页面实现和功能模块的设计与编码</p></li><li><p>参与基础组件建设和优化</p></li><li><p>参与前后端设计和联调，配合解决问题</p></li><li><p>编写技术文档和组件使用说明，帮助新成员快速融入</p><p></p></li></ol><p></p>",
+          "roles": []
+        },
+        {
+          "id": "019cdac7-98a3-7487-80b4-4c0e6937e2aa",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "company": "广东飞企互联有限公司",
+          "position": "实习前端开发",
+          "location": "珠海",
+          "period": "2018-09 ~ 2019/04",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<ol><li><p>根据设计图，完成对应的页面和动画效果制作</p></li><li><p>参与移动端、PC端系统的开发和维护</p></li></ol><p></p>",
+          "roles": []
+        }
+      ]
+    },
+    "education": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": [
+        {
+          "id": "019c93be-3c5e-76fe-b534-542f842afd06",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "school": "北京师范大学珠海分校",
+          "degree": "本科",
+          "area": "软件工程",
+          "grade": "",
+          "location": "",
+          "period": "2015/09 - 2019/07",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": ""
+        }
+      ]
+    },
+    "projects": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": [
+        {
+          "id": "019c9cea-2ad0-7688-b37c-b68cb62619e0",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "name": "可视化业务逻辑编排平台",
+          "period": "2024/11 - 2026/01",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<p>项目背景：针对实验室自动化等复杂场景中业务逻辑多变、固定代码范式难以支撑定制化需求的问题，构建了一套支持用户自定义逻辑的低代码编排系统，旨在通过可视化配置替代硬编码，提升交付效率<br><br>技术栈：Vue 3 + TypeScript + Vite + LogicFlow + Element Plus<br><br>职责：</p><ol><li><p>架构设计与选型 (0-1)：主导了从零到一的前端系统架构设计，采用 Vue 3 组合式 API 与 TypeScript 确保了大型复杂应用的可维护性。</p></li></ol><ol start=\"2\"><li><p>基于 LogicFlow 进行深度二次开发，实现了工作流编辑器，支持自定义插件、自定义业务节点、连线逻辑及复杂 数据的校验。</p></li><li><p>协议驱动的动态表单引擎：设计并实现了一套基于与后端协议的配置化表单渲染引擎，实现了表单结构与业务协议的高度解耦 。</p></li><li><p>AI 预研 ：前瞻性地预研了 AI 智能节点，探索将大模型引入编排流程，设计了支持 Prompt 调试的可视化节点，尝试通过 AI作为节点，为系统的智能化转型奠定基础。</p></li></ol><p></p>"
+        },
+        {
+          "id": "019c93c4-0f2a-74aa-843d-cb9d5c608a8e",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "name": "自动化实验业务系统",
+          "period": "2024-03 ~ 2026-01",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<p>项目背景：为提升实验室效率并确保24小时不间断实验的准确性，需要构建一套自动化实验系统。该系统需支持用户批量设计实验、配置实验流程，并实现全流程自动化执行与监控<br><br>技术栈：Vue3 + Typescript + Quasar + Webpack</p><p>职责：<br>1. 构建配置驱动的业务层： 针对定制化产品的复杂需求，设计并实现了一套 动态配置系统 。通过抽象产品功能， 定制钩子，将大量重复性功能转化为可配置项，使前端能根据后台配置动态渲染不同形态的实验界面，将需求响应效率提升约 40%</p><p>2. 设计并实现配置化表单渲染引擎：设计并开发了一套通用的配置化表单渲染引擎。通过将表单结构抽象为JSON配置，实现了复杂表单页面的快速搭建与动态调整，将新功能开发周期缩短约40%</p><p>3. 实现高效数据聚合层 (BFF)： 为解决数据接口来源多样（轮询、复杂查询）导致的性能瓶颈，开发了 统一BFF层 。该层聚合多个后端服务数据，通过智能缓存和批量请求策略，将关键页面加载时间从平均 3秒 优化至 800毫秒 以内</p><p>4. 主导工程化改造：为解决多定制化项目间的依赖冲突、代码割裂等问题，将原有多个独立仓库重构为 Monorepo 架构。统一了项目规范、依赖版本及构建流程，显著提升了团队协同开发效率和代码质量</p><p>5. 主导前端技术栈的持续演进与优化：产品持续重构，主导前端技术栈从 Vue2 + Electron 逐步演进至 Vue2 + Element + Webpack 至 Vue3 + Quasar + Webpack实现一套代码同时支持Web、及移动端应用</p><p>6. 保障产品高质量交付： 深度参与产品需求分析与数据模型设计，建立可复用的组件库和开发规范。在经历 2轮以上 重大产品重构后，系统仍能保持功能稳定、体验流畅，并成功支撑了超过 10万+ 次自动化实验的平稳运行</p><p></p><p></p>"
+        },
+        {
+          "id": "019cdaca-445e-728c-af94-662c39a59e23",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "name": "G2多站自动化实验",
+          "period": "2022-10 ~ 2024-02",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<p>项目背景：针对多站实验室自动化等复杂场景<br><br>技术栈：Vue 3 + TypeScript + Webpack + Element Plus</p>"
+        },
+        {
+          "id": "019cdac9-ced9-7259-99db-bdf86690da3d",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "name": "Skylab",
+          "period": "2021-12 ~ 2022-12",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<p>项目描述：管理项目，实验<br>技术栈：Vue2 + Element</p>"
+        },
+        {
+          "id": "019c93c6-4ecb-70da-a119-351a776f6bd4",
+          "hidden": false,
+          "options": {
+            "showLinkInTitle": false
+          },
+          "name": "医院输血系统",
+          "period": "2019-07 ~ 2021-10",
+          "website": {
+            "url": "",
+            "label": ""
+          },
+          "description": "<p>项目背景：系统实现了从血液采集、检验、储存、配型到临床输注的全生命周期闭环管理，打通了医院与血站之间的信息壁垒，为城市级血液安全提供了坚实的技术保障。<br><br>技术栈：Angular 6 + Vue 2<br><br>职责：<br>1. 业务逻辑实现： 基于Angular 6框架，实现了血液入库、检验、配型、发放等核心业务流程的交互逻辑，确保每一步操作都符合医疗规范。</p><p>2. 跨技术栈数据对接： 负责与后端团队协作，通过RESTful API将Angular 6前端与后台数据库连接，实现了血液批次号、患者信息等关键数据的同步。</p><p>3. Vue 2模块集成： 负责Vue 2打印/报表子系统的开发，实现了血液使用情况的图表化展示和导出功能，为临床科室提供了直观的数据支持。</p><p>4. 性能与兼容性优化： 针对IE11等旧版浏览器进行兼容性处理，确保了系统在医院内网环境下的稳定运行。</p><p>5. 团队协作与沟通： 积极参与需求评审，与产品经理、设计师、后端工程师紧密沟通，确保前端实现100%还原设计稿，并满足业务需求。</p>"
+        }
+      ]
+    },
+    "skills": {
+      "title": "技能",
+      "columns": 2,
+      "hidden": false,
+      "items": [
+        {
+          "id": "019c93bf-3324-721b-a0c6-20d42c4a5765",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Vue",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c4-37aa-7288-bf0e-b224d03992a6",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "SCSS",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c93bf-83be-7248-95b1-66b4a2c0a8db",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Typescript",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c3-8288-7558-be34-2c0991038e5f",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Vite",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c8-dae1-759f-bd74-7ad29baad0cb",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "LangChain",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c3-d360-746a-abb9-fbb83060473c",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Webpack",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c2-fca9-73c5-94b6-e6150b787020",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Python",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c3-46be-7350-bcda-c5be5f064d99",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Docker",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        },
+        {
+          "id": "019c97c3-5ddb-7586-9ce2-404a290d2a3e",
+          "hidden": false,
+          "icon": "acorn",
+          "name": "Linux",
+          "proficiency": "",
+          "level": 0,
+          "keywords": []
+        }
+      ]
+    },
+    "languages": {
+      "title": "",
+      "columns": 2,
+      "hidden": false,
+      "items": [
+        {
+          "id": "019c97c7-4ba4-7643-9e6c-abef0909e24c",
+          "hidden": false,
+          "language": "英语",
+          "fluency": "四级",
+          "level": 0
+        },
+        {
+          "id": "019cdac5-d513-7689-aa38-05e87d44ba89",
+          "hidden": false,
+          "language": "粤语",
+          "fluency": "",
+          "level": 0
+        }
+      ]
+    },
+    "interests": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    },
+    "awards": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    },
+    "certifications": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    },
+    "publications": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    },
+    "volunteer": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    },
+    "references": {
+      "title": "",
+      "columns": 1,
+      "hidden": false,
+      "items": []
+    }
+  },
+  "customSections": [
+    {
+      "title": "自我评价",
+      "columns": 1,
+      "hidden": false,
+      "id": "019c97cc-15b0-74a9-9036-3a0fe2ec1a12",
+      "type": "summary",
+      "items": [
+        {
+          "id": "019c97cc-46f1-77ff-b82c-abf373b8d4f8",
+          "hidden": false,
+          "content": "<p>性格好相处，与同事沟通融洽<br>认真负责，积极主动</p><p>工作细心，确保系统安全稳定</p>"
+        }
+      ]
+    },
+    {
+      "title": "个人经验",
+      "columns": 1,
+      "hidden": true,
+      "id": "019cdafb-69a7-73a1-bcd5-3c8ac78dc917",
+      "type": "summary",
+      "items": [
+        {
+          "id": "019cdafc-5073-726d-bba2-fe79c19e7c30",
+          "hidden": false,
+          "content": "<ol><li><p>全栈开发</p></li><li><p>熟练使用群晖NAS、Linux、Docker</p></li><li><p>使用Nginx部署</p></li></ol><p></p>"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "template": "gengar",
+    "layout": {
+      "sidebarWidth": 35,
+      "pages": [
+        {
+          "fullWidth": false,
+          "main": [
+            "experience",
+            "profiles",
+            "summary",
+            "volunteer",
+            "references",
+            "certifications",
+            "awards",
+            "interests",
+            "019cdafb-69a7-73a1-bcd5-3c8ac78dc917",
+            "publications"
+          ],
+          "sidebar": [
+            "education",
+            "019c97cc-15b0-74a9-9036-3a0fe2ec1a12",
+            "skills",
+            "languages"
+          ]
+        },
+        {
+          "fullWidth": true,
+          "main": [
+            "projects"
+          ],
+          "sidebar": []
+        }
+      ]
+    },
+    "css": {
+      "enabled": true,
+      "value": ".experience-item-title{\r\n  font-size: 18px\r\n}\r\n.projects-item-title{\r\n  font-size: 20px\r\n}"
+    },
+    "page": {
+      "gapX": 4,
+      "gapY": 6,
+      "marginX": 14,
+      "marginY": 12,
+      "format": "a4",
+      "locale": "zh-CN",
+      "hideIcons": true
+    },
+    "design": {
+      "level": {
+        "icon": "star",
+        "type": "circle"
+      },
+      "colors": {
+        "primary": "rgba(225, 113, 0, 1)",
+        "text": "rgba(0, 0, 0, 1)",
+        "background": "rgba(255, 255, 255, 1)"
+      }
+    },
+    "typography": {
+      "body": {
+        "fontFamily": "Noto Sans HK",
+        "fontWeights": [
+          "400",
+          "600"
+        ],
+        "fontSize": 12,
+        "lineHeight": 1.3
+      },
+      "heading": {
+        "fontFamily": "Noto Sans HK",
+        "fontWeights": [
+          "400",
+          "600"
+        ],
+        "fontSize": 20,
+        "lineHeight": 1.5
+      }
+    },
+    "notes": ""
+  }
+}
