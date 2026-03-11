@@ -59,6 +59,47 @@ function isAbortLikeError(error: unknown) {
   return message.includes("AbortError") || message.includes("cancelled") || message.includes("aborted");
 }
 
+function serializeError(error: unknown) {
+  const fallbackMessage = String(error || "unknown error");
+  if (!(error instanceof Error)) {
+    return { message: fallbackMessage };
+  }
+
+  const asAny = error as any;
+  return {
+    name: error.name,
+    message: error.message || fallbackMessage,
+    code: asAny?.code,
+    status: asAny?.status,
+    type: asAny?.type,
+    cause: asAny?.cause instanceof Error ? asAny.cause.message : String(asAny?.cause || "")
+  };
+}
+
+function isNetworkLikeError(error: unknown) {
+  const payload = serializeError(error);
+  const text = [payload.name, payload.message, payload.code, payload.type, payload.cause].join(" ").toLowerCase();
+  return (
+    text.includes("network") ||
+    text.includes("timeout") ||
+    text.includes("timed out") ||
+    text.includes("fetch failed") ||
+    text.includes("connection") ||
+    text.includes("socket") ||
+    text.includes("enotfound") ||
+    text.includes("econnreset") ||
+    text.includes("tls")
+  );
+}
+
+function logError(scope: string, message: string, meta: Record<string, unknown>) {
+  console.error(
+    `[${new Date().toISOString()}] [${scope}] ${message} ${JSON.stringify(meta, (_, value) =>
+      value instanceof Error ? serializeError(value) : value
+    )}`
+  );
+}
+
 loadEnvFiles();
 
 const MODE = parseMode();
@@ -308,12 +349,23 @@ function getOpenAIClient(config: ProviderConfig) {
   return client;
 }
 
-async function callChatCompletion(messages: ChatCompletionMessageParam[], provider: ChatProvider) {
+async function callChatCompletion(messages: ChatCompletionMessageParam[], provider: ChatProvider, reqId: string) {
   const config = getProviderConfig(provider);
   assertProviderConfig(config);
   const client = getOpenAIClient(config);
-  const completion = await client.chat.completions.create({ model: config.model, temperature: 0.3, messages });
-  return completion.choices?.[0]?.message?.content?.trim() || "暂时没有可用回复。";
+  try {
+    const completion = await client.chat.completions.create({ model: config.model, temperature: 0.3, messages });
+    return completion.choices?.[0]?.message?.content?.trim() || "暂时没有可用回复。";
+  } catch (error) {
+    logError("AI_CHAT", "Chat completion failed", {
+      requestId: reqId,
+      provider: config.provider,
+      model: config.model,
+      networkLike: isNetworkLikeError(error),
+      error: serializeError(error)
+    });
+    throw error;
+  }
 }
 function sseEvent(event: string, payload: unknown) {
   return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
@@ -361,6 +413,13 @@ function streamChat(
           controller.close();
           return;
         }
+        logError("AI_STREAM", "Chat stream failed", {
+          requestId: reqId,
+          provider: config.provider,
+          model: config.model,
+          networkLike: isNetworkLikeError(error),
+          error: serializeError(error)
+        });
         const message = error instanceof Error ? error.message : "流式响应失败";
         controller.enqueue(sseEvent("error", { message, requestId: reqId }));
       } finally {
@@ -404,6 +463,7 @@ async function handleProfile(request: Request, reqId: string) {
     if (isAbortLikeError(error) || request.signal.aborted) {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
+    logError("API_PROFILE", "Profile request failed", { requestId: reqId, error: serializeError(error) });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "RUNTIME_PROFILE_ERROR";
     return errorResponse(reqId, 500, code, message);
@@ -415,7 +475,7 @@ async function handleChat(request: Request, reqId: string) {
     const { userMessage, history, provider } = await parseChatPayload(request);
     const resolvedProvider = resolveProvider(provider);
     const { refs, messages } = await prepareChatContext(userMessage, history);
-    const reply = await callChatCompletion(messages, resolvedProvider);
+    const reply = await callChatCompletion(messages, resolvedProvider, reqId);
     return jsonResponse({
       reply,
       provider: resolvedProvider,
@@ -423,6 +483,11 @@ async function handleChat(request: Request, reqId: string) {
       requestId: reqId
     });
   } catch (error) {
+    logError("API_CHAT", "Chat request failed", {
+      requestId: reqId,
+      networkLike: isNetworkLikeError(error),
+      error: serializeError(error)
+    });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "CHAT_RUNTIME_ERROR";
     return errorResponse(reqId, code === "INVALID_REQUEST" ? 400 : 500, code, message);
@@ -444,6 +509,11 @@ async function handleChatStream(request: Request, reqId: string) {
       }
     });
   } catch (error) {
+    logError("API_CHAT_STREAM", "Chat stream request failed", {
+      requestId: reqId,
+      networkLike: isNetworkLikeError(error),
+      error: serializeError(error)
+    });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "CHAT_STREAM_RUNTIME_ERROR";
     return errorResponse(reqId, code === "INVALID_REQUEST" ? 400 : 500, code, message);
