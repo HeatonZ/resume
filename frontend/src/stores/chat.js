@@ -35,14 +35,19 @@ export const useChatStore = defineStore("chat", {
   state: () => ({
     profile: emptyProfile(),
     initialized: false,
+    profileLoading: false,
     messages: [],
     pending: false,
     error: "",
     suggestions: []
   }),
   actions: {
-    async init() {
-      if (this.initialized) return;
+    async init(force = false) {
+      if (this.profileLoading) return;
+      if (this.initialized && !force) return;
+
+      this.profileLoading = true;
+      this.error = "";
 
       try {
         const data = await fetchProfile();
@@ -55,6 +60,8 @@ export const useChatStore = defineStore("chat", {
       } catch (err) {
         this.error = err.message || "加载资料失败";
         this.profile = emptyProfile();
+      } finally {
+        this.profileLoading = false;
       }
 
       this.suggestions = buildSuggestions(this.profile.name);

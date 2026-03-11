@@ -34,6 +34,46 @@ body,
   gap: 14px;
 }
 
+.app-shell {
+  position: relative;
+}
+
+.page-loading {
+  filter: blur(2px);
+  opacity: 0.75;
+  pointer-events: none;
+  user-select: none;
+}
+
+.global-loading-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  background: rgba(242, 247, 251, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.global-loading-panel {
+  min-width: min(420px, 88vw);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
+  padding: 28px 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(233, 245, 255, 0.9));
+  box-shadow: 0 16px 40px rgba(3, 105, 161, 0.16);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
+.global-loading-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
 .hero {
   border: 1px solid var(--line);
   border-radius: 18px;
@@ -318,5 +358,12 @@ body,
 
   .message {
     max-width: 92%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-loading {
+    filter: none;
+    opacity: 1;
   }
 }
