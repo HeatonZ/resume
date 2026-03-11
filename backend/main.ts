@@ -1,4 +1,4 @@
-import OpenAI from "npm:openai";
+﻿import OpenAI from "npm:openai";
 import type { ChatCompletionMessageParam } from "npm:openai/resources/chat/completions";
 import { extname, fromFileUrl, join, normalize } from "jsr:@std/path";
 import { loadSync } from "jsr:@std/dotenv";
@@ -67,11 +67,26 @@ const API_PORT = Number(Deno.env.get("API_PORT") || "8000");
 const MOONSHOT_API_KEY = Deno.env.get("MOONSHOT_API_KEY") || "";
 const MOONSHOT_BASE_URL = Deno.env.get("MOONSHOT_BASE_URL") || "https://api.moonshot.cn/v1";
 const MOONSHOT_MODEL = Deno.env.get("MOONSHOT_MODEL") || "kimi-k2-0711-preview";
+const ZHIPU_API_KEY = Deno.env.get("ZHIPU_API_KEY") || "";
+const ZHIPU_BASE_URL = Deno.env.get("ZHIPU_BASE_URL") || "https://open.bigmodel.cn/api/paas/v4";
+const ZHIPU_MODEL = Deno.env.get("ZHIPU_MODEL") || "GLM-4.7-Flash";
+const DEFAULT_CHAT_PROVIDER = (Deno.env.get("CHAT_PROVIDER") || "").trim().toLowerCase();
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
 
 const resumeJsonPath = new URL("../data/resume.json", import.meta.url);
 const frontendDistFsPath = fromFileUrl(new URL("../frontend/dist/", import.meta.url));
 const encoder = new TextEncoder();
+const openAIClients = new Map<string, OpenAI>();
+
+type ChatProvider = "kimi" | "zhipu";
+type ChatHistoryItem = { role: string; content: string };
+
+type ProviderConfig = {
+  provider: ChatProvider;
+  apiKey: string;
+  baseURL: string;
+  model: string;
+};
 
 function corsHeaders() {
   return {
@@ -234,12 +249,13 @@ async function getRuntimeContext() {
   return { profile: normalizeProfile(resume), chunks: buildResumeChunks(resume) };
 }
 
-function buildMessages(profile: any, userMessage: string, history: Array<{ role: string; content: string }>, context: string) {
-  const systemPrompt =
-    `你是“${profile.name}”的 AI 名片助手，目标是向用户准确介绍该候选人的简历信息。` +
-    "你必须严格依据提供的简历资料回答，禁止编造不存在的事实。" +
-    "如果信息缺失，请明确说“资料中未提供该信息”。" +
-    "回答语言使用中文，风格专业、简洁、客观。";
+function buildMessages(profile: any, userMessage: string, history: ChatHistoryItem[], context: string) {
+  const systemPrompt = [
+    `你是“${profile.name}”的 AI 名片助手，目标是向用户准确介绍该候选人的简历信息。`,
+    "你必须严格依据提供的简历资料回答，禁止编造不存在的事实。",
+    "如果信息缺失，请明确说明“资料中未提供该信息”。",
+    "回答语言使用中文，风格专业、简洁、客观。"
+  ].join("");
 
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
@@ -255,40 +271,64 @@ function buildMessages(profile: any, userMessage: string, history: Array<{ role:
   return messages;
 }
 
-function createOpenAIClient() {
-  if (!MOONSHOT_API_KEY) return null;
-  return new OpenAI({ apiKey: MOONSHOT_API_KEY, baseURL: MOONSHOT_BASE_URL });
+function createError(message: string, code: string) {
+  return Object.assign(new Error(message), { code });
 }
 
-async function callChatCompletion(messages: ChatCompletionMessageParam[]) {
-  const client = createOpenAIClient();
-  if (!client) {
-    const error = new Error("当前未配置 MOONSHOT_API_KEY，请先设置环境变量后重试。");
-    // @ts-ignore custom runtime code
-    error.code = "MODEL_CONFIG_MISSING";
-    throw error;
+function resolveProvider(input: unknown): ChatProvider {
+  const normalized = String(input || "").trim().toLowerCase();
+  if (!normalized) return DEFAULT_CHAT_PROVIDER === "zhipu" ? "zhipu" : "kimi";
+  if (normalized === "kimi" || normalized === "zhipu") return normalized;
+  throw createError(`Unsupported provider: ${normalized}`, "INVALID_PROVIDER");
+}
+
+function getProviderConfig(provider: ChatProvider): ProviderConfig {
+  if (provider === "zhipu") {
+    return { provider, apiKey: ZHIPU_API_KEY, baseURL: ZHIPU_BASE_URL, model: ZHIPU_MODEL };
   }
+  return { provider: "kimi", apiKey: MOONSHOT_API_KEY, baseURL: MOONSHOT_BASE_URL, model: MOONSHOT_MODEL };
+}
 
-  const completion = await client.chat.completions.create({
-    model: MOONSHOT_MODEL,
-    temperature: 0.3,
-    messages
-  });
+function assertProviderConfig(config: ProviderConfig) {
+  const missingFields: string[] = [];
+  if (!config.apiKey) missingFields.push("apiKey");
+  if (!config.baseURL) missingFields.push("baseURL");
+  if (!config.model) missingFields.push("model");
+  if (missingFields.length > 0) {
+    throw createError(`Provider config missing for ${config.provider}: ${missingFields.join(", ")}`, "MODEL_CONFIG_MISSING");
+  }
+}
 
+function getOpenAIClient(config: ProviderConfig) {
+  const cacheKey = `${config.provider}|${config.baseURL}|${config.apiKey}`;
+  const cached = openAIClients.get(cacheKey);
+  if (cached) return cached;
+  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+  openAIClients.set(cacheKey, client);
+  return client;
+}
+
+async function callChatCompletion(messages: ChatCompletionMessageParam[], provider: ChatProvider) {
+  const config = getProviderConfig(provider);
+  assertProviderConfig(config);
+  const client = getOpenAIClient(config);
+  const completion = await client.chat.completions.create({ model: config.model, temperature: 0.3, messages });
   return completion.choices?.[0]?.message?.content?.trim() || "暂时没有可用回复。";
 }
-
 function sseEvent(event: string, payload: unknown) {
   return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
-function streamChat(messages: ChatCompletionMessageParam[], refs: any[], reqId: string, signal?: AbortSignal) {
-  const client = createOpenAIClient();
-  if (!client) {
-    throw Object.assign(new Error("当前未配置 MOONSHOT_API_KEY，请先设置环境变量后重试。"), {
-      code: "MODEL_CONFIG_MISSING"
-    });
-  }
+function streamChat(
+  messages: ChatCompletionMessageParam[],
+  refs: any[],
+  reqId: string,
+  provider: ChatProvider,
+  signal?: AbortSignal
+) {
+  const config = getProviderConfig(provider);
+  assertProviderConfig(config);
+  const client = getOpenAIClient(config);
 
   return new ReadableStream({
     async start(controller) {
@@ -301,7 +341,7 @@ function streamChat(messages: ChatCompletionMessageParam[], refs: any[], reqId: 
         controller.enqueue(sseEvent("refs", { references: refs.map((item) => ({ title: item.title, score: item.score })) }));
         const stream = await client.chat.completions.create(
           {
-            model: MOONSHOT_MODEL,
+            model: config.model,
             temperature: 0.3,
             messages,
             stream: true
@@ -334,10 +374,11 @@ async function parseChatPayload(request: Request) {
   const payload = await request.json().catch(() => ({}));
   const userMessage = String(payload?.message || "").trim();
   const history = Array.isArray(payload?.history) ? payload.history : [];
-  return { userMessage, history };
+  const provider = payload?.provider;
+  return { userMessage, history, provider };
 }
 
-async function prepareChatContext(userMessage: string, history: Array<{ role: string; content: string }>) {
+async function prepareChatContext(userMessage: string, history: ChatHistoryItem[]) {
   if (!userMessage) {
     const error = new Error("message 不能为空");
     // @ts-ignore custom runtime code
@@ -371,11 +412,13 @@ async function handleProfile(request: Request, reqId: string) {
 
 async function handleChat(request: Request, reqId: string) {
   try {
-    const { userMessage, history } = await parseChatPayload(request);
+    const { userMessage, history, provider } = await parseChatPayload(request);
+    const resolvedProvider = resolveProvider(provider);
     const { refs, messages } = await prepareChatContext(userMessage, history);
-    const reply = await callChatCompletion(messages);
+    const reply = await callChatCompletion(messages, resolvedProvider);
     return jsonResponse({
       reply,
+      provider: resolvedProvider,
       references: refs.map((item) => ({ title: item.title, score: item.score })),
       requestId: reqId
     });
@@ -388,9 +431,10 @@ async function handleChat(request: Request, reqId: string) {
 
 async function handleChatStream(request: Request, reqId: string) {
   try {
-    const { userMessage, history } = await parseChatPayload(request);
+    const { userMessage, history, provider } = await parseChatPayload(request);
+    const resolvedProvider = resolveProvider(provider);
     const { refs, messages } = await prepareChatContext(userMessage, history);
-    return new Response(streamChat(messages, refs, reqId, request.signal), {
+    return new Response(streamChat(messages, refs, reqId, resolvedProvider, request.signal), {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -443,3 +487,4 @@ Deno.serve({ hostname: API_HOST, port: API_PORT }, async (request) => {
 });
 
 console.log(`Backend mode=${MODE} running at http://${API_HOST}:${API_PORT}`);
+

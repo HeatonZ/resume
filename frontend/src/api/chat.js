@@ -51,11 +51,11 @@ async function readStreamEvents(stream, onEvent) {
   }
 }
 
-export async function sendChat({ message, history }) {
+export async function sendChat({ message, history, provider }) {
   const resp = await fetch(buildApiUrl("/api/chat"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history })
+    body: JSON.stringify({ message, history, provider })
   });
 
   const data = await resp.json();
@@ -66,14 +66,14 @@ export async function sendChat({ message, history }) {
   return data;
 }
 
-export async function sendChatStream({ message, history, onToken, onRefs }) {
+export async function sendChatStream({ message, history, provider, onToken, onRefs }) {
   const resp = await fetch(buildApiUrl("/api/chat/stream"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream"
     },
-    body: JSON.stringify({ message, history })
+    body: JSON.stringify({ message, history, provider })
   });
 
   if (!resp.ok) {
