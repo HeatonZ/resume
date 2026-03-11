@@ -1,55 +1,61 @@
-﻿# AI 简历名片应用
+# AI 简历名片应用
 
-一个基于 Vue 3 + Vite 的对话应用，用于基于结构化简历数据回答候选人相关问题。
+## 目录结构
 
-## 技术栈
+- `frontend/`: Vue 3 + Vite 前端
+- `backend/`: Deno 后端（API + 生产静态托管）
+- `data/`: 简历数据源（`resume.json`）
 
-- 前端：Vue 3、Pinia、Naive UI、@vueuse/motion、Vite
-- 后端：Node.js（原生 http）
-- 模型：OpenAI Chat Completions API
+## 运行模式
 
-## 环境要求
-
-- Node.js 18+
+- 开发模式：前后端分离运行
+- 前端：`http://localhost:5173`
+- 后端 API：`http://localhost:8000`
+- 生产模式：后端直接托管 `frontend/dist`，并提供 `/api/*`
 
 ## 环境变量
 
-```powershell
-$env:OPENAI_API_KEY="你的OpenAIKey"
-$env:OPENAI_MODEL="gpt-4.1-mini"
-```
+支持 `.env` / `.env.local`（后端自动加载），示例见 `.env.example`。
 
-`OPENAI_MODEL` 可选，默认 `gpt-4.1-mini`。
+关键变量：
 
-## 运行方式
+- `MOONSHOT_API_KEY`
+- `MOONSHOT_BASE_URL`
+- `MOONSHOT_MODEL`
+- `API_HOST`
+- `API_PORT`
+- `ALLOWED_ORIGIN`
 
-### 开发模式
+## 根目录统一命令（Deno）
 
-```powershell
-npm run dev
-```
-
-- 前端地址：`http://localhost:5173`
-- API 地址：`http://localhost:3000`
-
-### 构建
+### 开发（前后端分离）
 
 ```powershell
-npm run build
+deno task dev
 ```
 
-构建产物输出到 `dist/`。
-
-### 生产启动
+### 仅启动后端 API（开发）
 
 ```powershell
-npm run start
+deno task dev:api
 ```
 
-服务地址：`http://localhost:3000`（由 `server.js` 托管 `dist` 与 `/api/*`）。
+### 构建前端
 
-## 数据来源
+```powershell
+deno task build
+```
 
-- 唯一数据源：`data/resume.json`
+会在 `frontend/dist` 生成构建产物。
 
-`resume.md` 已移除，运行时不再支持 Markdown 数据源。
+### 生产启动（托管 frontend/dist + API）
+
+```powershell
+deno task start
+```
+
+## API
+
+- `GET /api/profile`
+- `POST /api/chat`
+- `POST /api/chat/stream`（SSE 流式）

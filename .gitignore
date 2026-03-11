@@ -1,6 +1,11 @@
-﻿node_modules/
+node_modules/
 dist/
 .vite/
 npm-debug.log*
 .codex/
 openspec/
+.env
+.env.*
+!.env.example
+frontend/node_modules/
+frontend/dist/

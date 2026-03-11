@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "auto",
+  "tasks": {
+    "dev:api": "deno run -A --watch backend/main.ts --mode=api",
+    "dev:web": "deno run -A scripts/web-dev.ts",
+    "dev": "deno run -A scripts/dev.ts",
+    "build": "deno run -A scripts/web-build.ts",
+    "start": "deno run -A backend/main.ts --mode=full"
+  }
+}

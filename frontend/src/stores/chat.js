@@ -1,5 +1,5 @@
-﻿import { defineStore } from "pinia";
-import { sendChat } from "../api/chat";
+import { defineStore } from "pinia";
+import { sendChatStream } from "../api/chat";
 import { fetchProfile } from "../api/profile";
 
 function emptyProfile() {
@@ -71,13 +71,39 @@ export const useChatStore = defineStore("chat", {
       this.pending = true;
 
       const history = this.messages.slice(0, -1).map(({ role, content }) => ({ role, content }));
+      this.messages.push({ role: "assistant", content: "", references: [] });
+      const assistantIndex = this.messages.length - 1;
 
       try {
-        const data = await sendChat({ message, history });
-        this.messages.push({ role: "assistant", content: data.reply || "暂时没有可用回复。" });
+        await sendChatStream({
+          message,
+          history,
+          onToken: (delta) => {
+            const current = this.messages[assistantIndex];
+            if (!current) return;
+            current.content += delta;
+          },
+          onRefs: (references) => {
+            const current = this.messages[assistantIndex];
+            if (!current) return;
+            current.references = Array.isArray(references) ? references : [];
+          }
+        });
+
+        const current = this.messages[assistantIndex];
+        if (current && !String(current.content || "").trim()) {
+          current.content = "暂时没有可用回复。";
+        }
       } catch (err) {
         this.error = err.message || "请求失败";
-        this.messages.push({ role: "assistant", content: `请求失败：${this.error}` });
+        const current = this.messages[assistantIndex];
+        if (!current) return;
+
+        if (String(current.content || "").trim()) {
+          current.content += `\n\n请求异常：${this.error}`;
+        } else {
+          current.content = `请求失败：${this.error}`;
+        }
       } finally {
         this.pending = false;
       }

@@ -35,7 +35,7 @@ function submit(value = input.value) {
 }
 
 watch(
-  () => props.messages.length,
+  () => props.messages.map((msg) => `${msg.role}:${msg.content?.length || 0}`).join("|"),
   async () => {
     await nextTick();
     if (listRef.value) {
