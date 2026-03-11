@@ -86,11 +86,9 @@ body,
   backdrop-filter: blur(8px);
 }
 
-.eyebrow {
-  margin: 0 0 8px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+.hero-top {
+  margin-bottom: 10px;
+  min-height: 32px;
 }
 
 .hero h1 {
@@ -102,6 +100,40 @@ body,
 .hero-copy {
   margin: 10px 0 0;
   color: var(--muted);
+}
+
+.github-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid #d0d7de;
+  background: #f6f8fa;
+  color: #24292f;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.github-badge:hover {
+  background: #eff2f5;
+  border-color: #d0d7de;
+}
+
+.github-badge:active {
+  background: #e6eaef;
+  border-color: #d0d7de;
+}
+
+.github-mark {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  flex: 0 0 auto;
 }
 
 .content-grid {

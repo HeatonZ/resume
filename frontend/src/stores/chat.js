@@ -9,6 +9,7 @@ function emptyProfile() {
     location: "",
     email: "",
     phone: "",
+    github: "https://github.com/HeatonZ/resume",
     summary: "",
     skills: [],
     highlights: []
@@ -51,12 +52,15 @@ export const useChatStore = defineStore("chat", {
 
       try {
         const data = await fetchProfile();
+        const empty = emptyProfile()
         this.profile = {
-          ...emptyProfile(),
+          ...empty,
           ...data,
           skills: Array.isArray(data?.skills) ? data.skills.filter(Boolean) : [],
           highlights: Array.isArray(data?.highlights) ? data.highlights.filter(Boolean) : []
         };
+        this.profile.github = this.profile.github || empty.github
+        console.log(this.profile, empty)
       } catch (err) {
         this.error = err.message || "加载资料失败";
         this.profile = emptyProfile();

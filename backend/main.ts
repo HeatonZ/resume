@@ -46,6 +46,21 @@ function safeText(value: unknown) {
   return String(value || "").trim();
 }
 
+function pickGithubUrl(resume: any) {
+  const basicsUrl = safeText(resume?.basics?.website?.url);
+  if (/github\.com/i.test(basicsUrl)) return basicsUrl;
+
+  const profileItems = Array.isArray(resume?.sections?.profiles?.items) ? resume.sections.profiles.items : [];
+  for (const item of profileItems) {
+    const network = safeText(item?.network);
+    const url = safeText(item?.url);
+    if (network.toLowerCase() === "github" && url) return url;
+    if (/github\.com/i.test(url)) return url;
+  }
+
+  return "";
+}
+
 function tokenize(text: string) {
   return (text || "")
     .toLowerCase()
@@ -176,6 +191,7 @@ function normalizeProfile(resume: any) {
   const basics = resume?.basics || {};
   const summaryRaw = safeText(stripHtml(resume?.summary?.content));
   const sections = resume?.sections || {};
+  const github = pickGithubUrl(resume);
   const skills = Array.isArray(sections?.skills?.items)
     ? sections.skills.items
         .map((item: any) => safeText(item?.name))
@@ -204,6 +220,7 @@ function normalizeProfile(resume: any) {
     location: safeText(basics?.location),
     email: safeText(basics?.email),
     phone: safeText(basics?.phone),
+    github,
     summary: summaryRaw,
     skills,
     highlights: highlights.slice(0, 4)
