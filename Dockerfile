@@ -1,0 +1,21 @@
+FROM deno:latest
+
+WORKDIR /app
+
+# frontend build uses npm script (see scripts/web-build.ts)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends npm ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+# Build frontend assets and warm Deno cache for runtime startup.
+RUN deno task build
+RUN deno cache -A --unstable-kv backend/main.ts
+
+ENV API_HOST=0.0.0.0
+ENV API_PORT=8000
+
+EXPOSE 8000
+
+CMD ["deno", "task", "start"]

@@ -59,6 +59,18 @@ deno task build
 deno task start
 ```
 
+Docker 本地构建：
+
+```powershell
+docker build -t resume-app:local .
+```
+
+Docker 本地运行：
+
+```powershell
+docker run --rm -p 8000:8000 -e API_PORT=8000 resume-app:local
+```
+
 本地防护仿真：
 
 ```powershell
@@ -131,6 +143,30 @@ bash scripts/stream-smoke.sh
 1. 若首 token 很慢或只出现 1 个 token 事件，先看 `STREAM_QUALITY` 中 `provider_mode` 与 `fallback_reason`。
 2. 若部署在 Nginx，确认已关闭缓冲：`proxy_buffering off;`，并保留响应头 `X-Accel-Buffering: no`。
 3. 用 `scripts/stream-smoke.sh` 分别对 `kimi`、`zhipu` 重复采样，比较 `first_token_latency_ms` 与 `token_event_count`。
+
+## GHCR 发布（Tag 驱动）
+
+- 工作流文件：`.github/workflows/ghcr-release.yml`
+- 触发条件：推送 tag `v*`（例如 `v1.2.3`）
+- 镜像地址：`ghcr.io/<owner>/<repo>`
+- 标签规则：
+  - 原始 tag：`v1.2.3`
+  - 语义化 tag：`1.2.3`（自动去掉 `v` 前缀）
+  - 稳定 tag：`latest`（当 tag 不包含 `-` 预发布后缀时）
+
+示例发布：
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+拉取示例：
+
+```bash
+docker pull ghcr.io/<owner>/<repo>:v1.2.3
+docker pull ghcr.io/<owner>/<repo>:1.2.3
+```
 
 ## 防护仿真输出说明
 
