@@ -22,4 +22,4 @@ ENV API_PORT=8000
 
 EXPOSE 8000
 
-CMD ["deno", "task", "start", "--unstable-kv"]
+CMD ["deno", "run", "-A", "--unstable-kv", "backend/main.ts", "--mode=full"]
