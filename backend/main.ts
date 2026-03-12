@@ -352,6 +352,67 @@ function buildResumeChunks(resume: any) {
   const chunks: Array<{ id: number; title: string; text: string }> = [];
   let nextId = 1;
 
+  const ignoredKeys = new Set(["id", "hidden", "options", "columns", "title"]);
+
+  function formatLabel(key: string) {
+    return key
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  function formatFieldValue(value: unknown): string {
+    if (value == null) return "";
+    if (typeof value === "string") return safeText(stripHtml(value));
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => formatFieldValue(item))
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (typeof value === "object") {
+      const obj = value as Record<string, unknown>;
+      const label = safeText(obj?.label);
+      const url = safeText(obj?.url);
+      if (url || label) return [label, url].filter(Boolean).join(" | ");
+
+      return Object.entries(obj)
+        .filter(([key]) => !ignoredKeys.has(key))
+        .map(([key, inner]) => {
+          const text = formatFieldValue(inner);
+          return text ? `${formatLabel(key)}: ${text}` : "";
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
+    return "";
+  }
+
+  function formatItem(item: any, preferredOrder: string[] = []) {
+    if (!item || typeof item !== "object") return "";
+    const keys = [
+      ...preferredOrder,
+      ...Object.keys(item).filter((key) => !preferredOrder.includes(key)),
+    ];
+    const lines: string[] = [];
+    for (const key of keys) {
+      if (ignoredKeys.has(key)) continue;
+      const text = formatFieldValue(item?.[key]);
+      if (!text) continue;
+      if (key === "description" || key === "content") {
+        lines.push(text);
+      } else {
+        lines.push(`${formatLabel(key)}: ${text}`);
+      }
+    }
+    return lines.join("\n");
+  }
+
   function pushChunk(title: string, text: string) {
     const cleanTitle = safeText(title);
     const cleanText = safeText(text);
@@ -370,6 +431,15 @@ function buildResumeChunks(resume: any) {
       safeText(basics?.name),
       safeText(basics?.headline),
       safeText(basics?.location),
+      safeText(basics?.email),
+      safeText(basics?.phone),
+      formatFieldValue(basics?.website),
+      Array.isArray(basics?.customFields)
+        ? basics.customFields
+          .map((item: any) => formatItem(item))
+          .filter(Boolean)
+          .join("\n")
+        : "",
     ].filter(Boolean).join(" | "),
   );
   pushChunk("Summary", stripHtml(resume?.summary?.content || ""));
@@ -440,6 +510,84 @@ function buildResumeChunks(resume: any) {
         .filter(Boolean)
         .join(", "),
     );
+  }
+
+  const languageItems = Array.isArray(sections?.languages?.items)
+    ? sections.languages.items
+    : [];
+  for (const item of languageItems) {
+    pushChunk(
+      `Language: ${safeText(item?.language) || "Item"}`,
+      formatItem(item, ["language", "fluency", "level"]),
+    );
+  }
+
+  const standardSectionOrders: Record<string, string[]> = {
+    profiles: ["network", "username", "url"],
+    interests: ["name", "keywords"],
+    awards: ["title", "awarder", "date", "summary"],
+    certifications: ["name", "issuer", "date", "summary"],
+    publications: ["name", "publisher", "date", "summary", "url"],
+    volunteer: ["organization", "position", "location", "period", "summary"],
+    references: ["name", "reference"],
+  };
+
+  for (const [sectionKey, preferredOrder] of Object.entries(standardSectionOrders)) {
+    const items = Array.isArray(sections?.[sectionKey]?.items)
+      ? sections[sectionKey].items
+      : [];
+    const sectionTitle = safeText(sections?.[sectionKey]?.title) ||
+      formatLabel(sectionKey);
+    for (const item of items) {
+      pushChunk(
+        `${sectionTitle}: ${
+          safeText(item?.name) || safeText(item?.title) ||
+          safeText(item?.organization) || safeText(item?.network) ||
+          "Item"
+        }`,
+        formatItem(item, preferredOrder),
+      );
+    }
+  }
+
+  const handledSectionKeys = new Set([
+    "experience",
+    "projects",
+    "education",
+    "skills",
+    "languages",
+    ...Object.keys(standardSectionOrders),
+  ]);
+  for (const [sectionKey, sectionValue] of Object.entries(sections)) {
+    if (handledSectionKeys.has(sectionKey)) continue;
+    const sectionObj = sectionValue as any;
+    const items = Array.isArray(sectionObj?.items) ? sectionObj.items : [];
+    if (items.length === 0) continue;
+    const sectionTitle = safeText(sectionObj?.title) || formatLabel(sectionKey);
+    for (const item of items) {
+      pushChunk(
+        `${sectionTitle}: ${
+          safeText(item?.name) || safeText(item?.title) ||
+          safeText(item?.organization) || "Item"
+        }`,
+        formatItem(item),
+      );
+    }
+  }
+
+  const customSections = Array.isArray(resume?.customSections)
+    ? resume.customSections
+    : [];
+  for (const section of customSections) {
+    const sectionTitle = safeText(section?.title) || "Custom Section";
+    const items = Array.isArray(section?.items) ? section.items : [];
+    if (items.length === 0) continue;
+    for (const item of items) {
+      pushChunk(
+        sectionTitle,
+        formatItem(item, ["name", "title", "period", "date", "content", "description"]),
+      );
+    }
   }
 
   if (chunks.length === 0) {
