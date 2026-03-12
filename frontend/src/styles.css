@@ -7,6 +7,8 @@
   --card: #ffffff;
   --assistant: #edf4ff;
   --user: #d7eeff;
+  --content-top-gap: 16px;
+  --content-min-height: 620px;
 }
 
 * {
@@ -141,23 +143,26 @@ body,
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 14px;
   align-items: stretch;
+  min-height: max(var(--content-min-height), calc(100dvh - var(--content-top-gap) * 2));
 }
 
 .profile-column {
   position: sticky;
-  top: 16px;
-  height: fit-content;
+  top: var(--content-top-gap);
+  align-self: start;
+  height: max(var(--content-min-height), calc(100dvh - var(--content-top-gap) * 2));
+  min-height: 0;
 }
 
 .chat-column {
   height: 100%;
-  min-height: max(620px, calc(100vh - 205px));
+  min-height: 0;
   border-radius: 18px;
   border: 1px solid var(--line);
   padding: 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 252, 255, 0.98));
   display: flex;
-  min-height: 0;
+  overflow: hidden;
 }
 
 .profile-card {
@@ -165,6 +170,43 @@ body,
   border-radius: 16px;
   padding: 14px;
   background: var(--card);
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 981px) and (hover: hover) and (pointer: fine) {
+  html,
+  body,
+  #app,
+  .app-shell {
+    height: 100%;
+  }
+
+  body {
+    overflow: hidden;
+  }
+
+  .page {
+    margin: 0 auto;
+    padding: 24px 0;
+    height: 100dvh;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .content-grid {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .profile-column {
+    position: static;
+    top: auto;
+    height: 100%;
+  }
 }
 
 .avatar {
@@ -335,6 +377,17 @@ body,
 }
 
 @media (max-width: 980px) {
+  body {
+    overflow: auto;
+  }
+
+  .page {
+    height: auto;
+    overflow: visible;
+    display: flex;
+    padding: 0;
+  }
+
   .hero {
     flex-direction: column;
     align-items: flex-start;
@@ -350,9 +403,16 @@ body,
     height: auto;
   }
 
+  .profile-card {
+    height: auto;
+    overflow: visible;
+    overscroll-behavior: auto;
+  }
+
   .chat-column {
     height: auto;
     min-height: 560px;
+    overflow: visible;
   }
 
   .chat-panel {
@@ -378,6 +438,7 @@ body,
   .chat-column {
     min-height: 500px;
     padding: 10px;
+    overflow: visible;
   }
 
   .chat-panel {

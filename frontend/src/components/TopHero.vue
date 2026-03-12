@@ -20,7 +20,10 @@ const githubUrl = computed(() => {
 <template>
   <section class="hero" v-motion :initial="{ opacity: 0, y: 20 }" :enter="{ opacity: 1, y: 0 }">
     <div class="hero-left">
-      <div class="hero-top">
+      <!-- <div class="hero-top">
+      </div> -->
+      <h1>
+        {{ displayName }}
         <a v-if="githubUrl" class="github-badge" :href="githubUrl" target="_blank" rel="noreferrer noopener">
           <svg aria-hidden="true" viewBox="0 0 16 16" class="github-mark">
             <path
@@ -29,8 +32,7 @@ const githubUrl = computed(() => {
           </svg>
           <span>View on GitHub</span>
         </a>
-      </div>
-      <h1>{{ displayName }}</h1>
+      </h1>
       <p class="hero-copy">{{ headline }}</p>
       <p class="hero-copy">{{ summary }}</p>
     </div>
