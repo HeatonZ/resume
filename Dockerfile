@@ -22,4 +22,4 @@ ENV API_PORT=8000
 
 EXPOSE 8000
 
-CMD ["deno", "task", "start"]
+CMD ["deno", "task", "start"， "--unstable-kv"]
