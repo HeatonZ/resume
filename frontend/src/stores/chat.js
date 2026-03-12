@@ -10,6 +10,7 @@ function emptyProfile() {
     email: "",
     phone: "",
     github: "https://github.com/HeatonZ/resume",
+    resumePdfUrl: "",
     summary: "",
     skills: [],
     highlights: []
@@ -60,6 +61,7 @@ export const useChatStore = defineStore("chat", {
           highlights: Array.isArray(data?.highlights) ? data.highlights.filter(Boolean) : []
         };
         this.profile.github = this.profile.github || empty.github
+        this.profile.resumePdfUrl = this.profile.resumePdfUrl || empty.resumePdfUrl
         console.log(this.profile, empty)
       } catch (err) {
         this.error = err.message || "加载资料失败";

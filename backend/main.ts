@@ -191,6 +191,8 @@ const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
 const GUARD_CONFIG = loadGuardConfig((name) => Deno.env.get(name));
 
 const resumeJsonPath = new URL("../data/resume.json", import.meta.url);
+const resumePdfPath = new URL("../data/resume.pdf", import.meta.url);
+const RESUME_PDF_ROUTE = "/resume.pdf";
 const frontendDistFsPath = fromFileUrl(
   new URL("../frontend/dist/", import.meta.url),
 );
@@ -339,6 +341,7 @@ function normalizeProfile(resume: any) {
     email: safeText(basics?.email),
     phone: safeText(basics?.phone),
     github,
+    resumePdfUrl: RESUME_PDF_ROUTE,
     summary: summaryRaw,
     skills,
     highlights: highlights.slice(0, 4),
@@ -789,6 +792,41 @@ async function handleProfile(request: Request, reqId: string) {
   }
 }
 
+async function handleResumePdf(request: Request, reqId: string) {
+  try {
+    if (request.signal.aborted) {
+      return new Response(null, { status: 204, headers: corsHeaders() });
+    }
+    const data = await Deno.readFile(resumePdfPath);
+    return new Response(data, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Cache-Control": "public, max-age=300",
+        ...corsHeaders(),
+      },
+    });
+  } catch (error) {
+    if (isAbortLikeError(error) || request.signal.aborted) {
+      return new Response(null, { status: 204, headers: corsHeaders() });
+    }
+    const missing = error instanceof Deno.errors.NotFound;
+    logError("API_RESUME_PDF", "Resume PDF request failed", {
+      requestId: reqId,
+      missing,
+      error: serializeError(error),
+    });
+    return errorResponse(
+      reqId,
+      missing ? 404 : 500,
+      missing ? "RESUME_PDF_MISSING" : "RESUME_PDF_READ_FAILED",
+      missing
+        ? "Resume PDF not found: data/resume.pdf"
+        : "Failed to read resume PDF",
+    );
+  }
+}
+
 async function handleChat(request: Request, reqId: string) {
   try {
     const { userMessage, history, provider } = await parseChatPayload(request);
@@ -931,6 +969,9 @@ export async function appHandler(
   }
   if (request.method === "GET" && url.pathname === "/api/profile") {
     return handleProfile(request, reqId);
+  }
+  if (request.method === "GET" && url.pathname === RESUME_PDF_ROUTE) {
+    return handleResumePdf(request, reqId);
   }
   if (
     request.method === "POST" &&

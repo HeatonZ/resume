@@ -104,6 +104,15 @@ body,
   color: var(--muted);
 }
 
+.hero-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+
 .github-badge {
   display: inline-flex;
   align-items: center;
@@ -121,6 +130,10 @@ body,
   transition: background-color 0.16s ease, border-color 0.16s ease;
 }
 
+button.github-badge {
+  cursor: pointer;
+}
+
 .github-badge:hover {
   background: #eff2f5;
   border-color: #d0d7de;
@@ -136,6 +149,62 @@ body,
   height: 16px;
   fill: currentColor;
   flex: 0 0 auto;
+}
+
+.pdf-badge {
+  border-color: #c8d9f2;
+  background: #eef5ff;
+  color: #1d3f72;
+}
+
+.pdf-badge:hover {
+  background: #e4efff;
+  border-color: #b9cde8;
+}
+
+.pdf-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: rgba(15, 23, 42, 0.52);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.pdf-dialog {
+  width: min(960px, 96vw);
+  height: min(88vh, 980px);
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #d8e2ef;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.3);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.pdf-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5edf7;
+  background: #f7fbff;
+}
+
+.pdf-dialog-close {
+  border: 1px solid #c9d8ea;
+  background: #fff;
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.pdf-dialog-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
 }
 
 .content-grid {
