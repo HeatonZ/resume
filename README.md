@@ -30,6 +30,8 @@
 - `API_HOST`
 - `API_PORT`
 - `ALLOWED_ORIGIN`
+- `CHAT_STREAM_FIRST_TOKEN_MAX_LATENCY_MS`
+- `CHAT_STREAM_MIN_TOKEN_EVENTS`
 
 ## 常用命令（Deno）
 
@@ -89,6 +91,46 @@ deno task simulate:guard
   "provider": "zhipu"
 }
 ```
+
+## 流式模式与观测
+
+`POST /api/chat/stream` 现在采用统一适配层，默认策略为：
+- provider `native` 流式优先
+- 初始化失败时自动 fallback 到 `compatible` 流式
+
+后端会输出结构化日志（`STREAM_QUALITY`）用于判断是否“真流式”，关键字段：
+- `request_id`
+- `provider` / `model`
+- `provider_mode`（`native` / `compatible`）
+- `fallback_reason`
+- `first_token_latency_ms`
+- `token_event_count`
+- `token_gap_ms_p95`
+- `stream_duration_ms`
+- `degraded_streaming`
+
+当出现以下任一条件时会标记 `degraded_streaming=true`：
+- `token_event_count <= CHAT_STREAM_MIN_TOKEN_EVENTS`
+- `first_token_latency_ms > CHAT_STREAM_FIRST_TOKEN_MAX_LATENCY_MS`
+
+## 流式验收脚本
+
+可使用 `curl --no-buffer` 脚本做端到端冒烟：
+
+```bash
+bash scripts/stream-smoke.sh
+```
+
+常用参数：
+- `API_BASE_URL`（默认 `http://localhost:8000`）
+- `PROVIDER`（`kimi` / `zhipu`）
+- `MESSAGE`
+
+## 排障建议
+
+1. 若首 token 很慢或只出现 1 个 token 事件，先看 `STREAM_QUALITY` 中 `provider_mode` 与 `fallback_reason`。
+2. 若部署在 Nginx，确认已关闭缓冲：`proxy_buffering off;`，并保留响应头 `X-Accel-Buffering: no`。
+3. 用 `scripts/stream-smoke.sh` 分别对 `kimi`、`zhipu` 重复采样，比较 `first_token_latency_ms` 与 `token_event_count`。
 
 ## 防护仿真输出说明
 

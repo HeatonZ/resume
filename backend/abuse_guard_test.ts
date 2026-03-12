@@ -1,5 +1,10 @@
 import { assertEquals } from "jsr:@std/assert";
-import { AbuseGuard, extractClientIp, type GuardConfig, validateChatInput } from "./abuse_guard.ts";
+import {
+  AbuseGuard,
+  extractClientIp,
+  type GuardConfig,
+  validateChatInput,
+} from "./abuse_guard.ts";
 
 function testConfig(): GuardConfig {
   return {
@@ -14,7 +19,9 @@ function testConfig(): GuardConfig {
     maxMessageChars: 10,
     maxHistoryItems: 2,
     maxOutputTokens: 128,
-    streamMaxDurationSeconds: 10
+    streamMaxDurationSeconds: 10,
+    streamFirstTokenMaxLatencyMs: 3000,
+    streamMinTokenEvents: 2,
   };
 }
 
@@ -33,8 +40,8 @@ Deno.test("extractClientIp should prioritize x-forwarded-for first IP", () => {
   const request = new Request("https://example.com", {
     headers: {
       "x-forwarded-for": "1.2.3.4, 5.6.7.8",
-      "x-real-ip": "9.9.9.9"
-    }
+      "x-real-ip": "9.9.9.9",
+    },
   });
   assertEquals(extractClientIp(request), "1.2.3.4");
 });

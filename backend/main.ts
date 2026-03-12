@@ -1,8 +1,22 @@
-﻿import OpenAI from "npm:openai";
+import type OpenAI from "npm:openai";
 import type { ChatCompletionMessageParam } from "npm:openai/resources/chat/completions";
 import { extname, fromFileUrl, join, normalize } from "jsr:@std/path";
 import { loadSync } from "jsr:@std/dotenv";
-import { AbuseGuard, extractClientIp, loadGuardConfig, validateChatInput } from "./abuse_guard.ts";
+import {
+  AbuseGuard,
+  extractClientIp,
+  loadGuardConfig,
+  validateChatInput,
+} from "./abuse_guard.ts";
+import {
+  assertProviderConfig,
+  callCompatibleCompletion,
+  type ChatProvider,
+  createProviderStream,
+  getProviderConfig,
+  type ProviderConfig,
+  resolveProvider,
+} from "./providers/index.ts";
 
 function loadEnvFiles() {
   for (const envPath of [".env.local", ".env"]) {
@@ -15,7 +29,9 @@ function loadEnvFiles() {
 }
 
 function parseMode() {
-  const fromArg = Deno.args.find((arg) => arg.startsWith("--mode="))?.slice("--mode=".length);
+  const fromArg = Deno.args.find((arg) => arg.startsWith("--mode="))?.slice(
+    "--mode=".length,
+  );
   const fromEnv = Deno.env.get("APP_MODE");
   const mode = String(fromArg || fromEnv || "full").toLowerCase();
   return mode === "api" ? "api" : "full";
@@ -25,7 +41,9 @@ function getMimeType(filePath: string) {
   const ext = extname(filePath).toLowerCase();
   if (ext === ".html") return "text/html; charset=utf-8";
   if (ext === ".css") return "text/css; charset=utf-8";
-  if (ext === ".js" || ext === ".mjs") return "application/javascript; charset=utf-8";
+  if (ext === ".js" || ext === ".mjs") {
+    return "application/javascript; charset=utf-8";
+  }
   if (ext === ".json") return "application/json; charset=utf-8";
   if (ext === ".svg") return "image/svg+xml";
   if (ext === ".png") return "image/png";
@@ -51,7 +69,9 @@ function pickGithubUrl(resume: any) {
   const basicsUrl = safeText(resume?.basics?.website?.url);
   if (/github\.com/i.test(basicsUrl)) return basicsUrl;
 
-  const profileItems = Array.isArray(resume?.sections?.profiles?.items) ? resume.sections.profiles.items : [];
+  const profileItems = Array.isArray(resume?.sections?.profiles?.items)
+    ? resume.sections.profiles.items
+    : [];
   for (const item of profileItems) {
     const network = safeText(item?.network);
     const url = safeText(item?.url);
@@ -72,7 +92,8 @@ function tokenize(text: string) {
 
 function isAbortLikeError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
-  return message.includes("AbortError") || message.includes("cancelled") || message.includes("aborted");
+  return message.includes("AbortError") || message.includes("cancelled") ||
+    message.includes("aborted");
 }
 
 function serializeError(error: unknown) {
@@ -88,13 +109,21 @@ function serializeError(error: unknown) {
     code: asAny?.code,
     status: asAny?.status,
     type: asAny?.type,
-    cause: asAny?.cause instanceof Error ? asAny.cause.message : String(asAny?.cause || "")
+    cause: asAny?.cause instanceof Error
+      ? asAny.cause.message
+      : String(asAny?.cause || ""),
   };
 }
 
 function isNetworkLikeError(error: unknown) {
   const payload = serializeError(error);
-  const text = [payload.name, payload.message, payload.code, payload.type, payload.cause].join(" ").toLowerCase();
+  const text = [
+    payload.name,
+    payload.message,
+    payload.code,
+    payload.type,
+    payload.cause,
+  ].join(" ").toLowerCase();
   return (
     text.includes("network") ||
     text.includes("timeout") ||
@@ -108,12 +137,39 @@ function isNetworkLikeError(error: unknown) {
   );
 }
 
-function logError(scope: string, message: string, meta: Record<string, unknown>) {
+function logError(
+  scope: string,
+  message: string,
+  meta: Record<string, unknown>,
+) {
   console.error(
-    `[${new Date().toISOString()}] [${scope}] ${message} ${JSON.stringify(meta, (_, value) =>
-      value instanceof Error ? serializeError(value) : value
-    )}`
+    `[${new Date().toISOString()}] [${scope}] ${message} ${
+      JSON.stringify(meta, (_, value) =>
+        value instanceof Error ? serializeError(value) : value)
+    }`,
   );
+}
+
+function logInfo(
+  scope: string,
+  message: string,
+  meta: Record<string, unknown>,
+) {
+  console.log(
+    `[${new Date().toISOString()}] [${scope}] ${message} ${
+      JSON.stringify(meta)
+    }`,
+  );
+}
+
+function percentile(values: number[], p: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
+  );
+  return sorted[index];
 }
 
 loadEnvFiles();
@@ -122,57 +178,63 @@ const MODE = parseMode();
 const API_HOST = Deno.env.get("API_HOST") || "0.0.0.0";
 const API_PORT = Number(Deno.env.get("API_PORT") || "8000");
 const MOONSHOT_API_KEY = Deno.env.get("MOONSHOT_API_KEY") || "";
-const MOONSHOT_BASE_URL = Deno.env.get("MOONSHOT_BASE_URL") || "https://api.moonshot.cn/v1";
+const MOONSHOT_BASE_URL = Deno.env.get("MOONSHOT_BASE_URL") ||
+  "https://api.moonshot.cn/v1";
 const MOONSHOT_MODEL = Deno.env.get("MOONSHOT_MODEL") || "kimi-k2-0711-preview";
 const ZHIPU_API_KEY = Deno.env.get("ZHIPU_API_KEY") || "";
-const ZHIPU_BASE_URL = Deno.env.get("ZHIPU_BASE_URL") || "https://open.bigmodel.cn/api/paas/v4";
+const ZHIPU_BASE_URL = Deno.env.get("ZHIPU_BASE_URL") ||
+  "https://open.bigmodel.cn/api/paas/v4";
 const ZHIPU_MODEL = Deno.env.get("ZHIPU_MODEL") || "GLM-4.7-Flash";
-const DEFAULT_CHAT_PROVIDER = (Deno.env.get("CHAT_PROVIDER") || "").trim().toLowerCase();
+const DEFAULT_CHAT_PROVIDER = (Deno.env.get("CHAT_PROVIDER") || "").trim()
+  .toLowerCase();
 const ALLOWED_ORIGIN = Deno.env.get("ALLOWED_ORIGIN") || "*";
 const GUARD_CONFIG = loadGuardConfig((name) => Deno.env.get(name));
 
 const resumeJsonPath = new URL("../data/resume.json", import.meta.url);
-const frontendDistFsPath = fromFileUrl(new URL("../frontend/dist/", import.meta.url));
+const frontendDistFsPath = fromFileUrl(
+  new URL("../frontend/dist/", import.meta.url),
+);
 const encoder = new TextEncoder();
 const openAIClients = new Map<string, OpenAI>();
-const kv =
-  GUARD_CONFIG.enabled && typeof Deno.openKv === "function"
-    ? await Deno.openKv().catch((error) => {
-        logError("GUARD_KV", "Failed to open Deno KV", { error: serializeError(error) });
-        return null;
-      })
-    : null;
+const kv = GUARD_CONFIG.enabled && typeof Deno.openKv === "function"
+  ? await Deno.openKv().catch((error) => {
+    logError("GUARD_KV", "Failed to open Deno KV", {
+      error: serializeError(error),
+    });
+    return null;
+  })
+  : null;
 if (GUARD_CONFIG.enabled && typeof Deno.openKv !== "function") {
-  logError("GUARD_KV", "Deno.openKv is unavailable; start with --unstable-kv or run on Deno Deploy", {});
+  logError(
+    "GUARD_KV",
+    "Deno.openKv is unavailable; start with --unstable-kv or run on Deno Deploy",
+    {},
+  );
 }
 const abuseGuard = new AbuseGuard(GUARD_CONFIG, kv);
 
-type ChatProvider = "kimi" | "zhipu";
 type ChatHistoryItem = { role: string; content: string };
-
-type ProviderConfig = {
-  provider: ChatProvider;
-  apiKey: string;
-  baseURL: string;
-  model: string;
-};
 
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Accept"
+    "Access-Control-Allow-Headers": "Content-Type,Accept",
   };
 }
 
-function jsonResponse(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+function jsonResponse(
+  payload: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       ...extraHeaders,
-      ...corsHeaders()
-    }
+      ...corsHeaders(),
+    },
   });
 }
 
@@ -181,9 +243,16 @@ function errorResponse(
   status: number,
   code: string,
   message: string,
-  options: { headers?: Record<string, string>; meta?: Record<string, unknown> } = {}
+  options: {
+    headers?: Record<string, string>;
+    meta?: Record<string, unknown>;
+  } = {},
 ) {
-  return jsonResponse({ error: message, code, requestId: reqId, ...options.meta }, status, options.headers || {});
+  return jsonResponse(
+    { error: message, code, requestId: reqId, ...options.meta },
+    status,
+    options.headers || {},
+  );
 }
 
 function logGuardRejection(
@@ -192,7 +261,7 @@ function logGuardRejection(
   ip: string,
   code: string,
   limitType: string,
-  remaining: number | null = null
+  remaining: number | null = null,
 ) {
   logError("API_GUARD", "Request rejected by guard", {
     requestId: reqId,
@@ -200,7 +269,7 @@ function logGuardRejection(
     ip,
     code,
     limitType,
-    remaining
+    remaining,
   });
 }
 
@@ -218,7 +287,9 @@ async function readResumeJson() {
   try {
     return JSON.parse(raw);
   } catch {
-    const error = new Error("Resume source is not valid JSON: data/resume.json");
+    const error = new Error(
+      "Resume source is not valid JSON: data/resume.json",
+    );
     // @ts-ignore custom runtime code
     error.code = "RESUME_SOURCE_INVALID";
     throw error;
@@ -232,23 +303,32 @@ function normalizeProfile(resume: any) {
   const github = pickGithubUrl(resume);
   const skills = Array.isArray(sections?.skills?.items)
     ? sections.skills.items
-        .map((item: any) => safeText(item?.name))
-        .filter(Boolean)
-        .slice(0, 12)
+      .map((item: any) => safeText(item?.name))
+      .filter(Boolean)
+      .slice(0, 12)
     : [];
 
-  const experiences = Array.isArray(sections?.experience?.items) ? sections.experience.items : [];
-  const projects = Array.isArray(sections?.projects?.items) ? sections.projects.items : [];
+  const experiences = Array.isArray(sections?.experience?.items)
+    ? sections.experience.items
+    : [];
+  const projects = Array.isArray(sections?.projects?.items)
+    ? sections.projects.items
+    : [];
   const highlights = [];
 
   for (const item of experiences.slice(0, 2)) {
-    const value = [safeText(item?.position), safeText(item?.company), safeText(item?.period)]
+    const value = [
+      safeText(item?.position),
+      safeText(item?.company),
+      safeText(item?.period),
+    ]
       .filter(Boolean)
       .join(" | ");
     if (value) highlights.push(value);
   }
   for (const item of projects.slice(0, 2)) {
-    const value = [safeText(item?.name), safeText(item?.period)].filter(Boolean).join(" | ");
+    const value = [safeText(item?.name), safeText(item?.period)].filter(Boolean)
+      .join(" | ");
     if (value) highlights.push(value);
   }
 
@@ -261,7 +341,7 @@ function normalizeProfile(resume: any) {
     github,
     summary: summaryRaw,
     skills,
-    highlights: highlights.slice(0, 4)
+    highlights: highlights.slice(0, 4),
   };
 }
 
@@ -273,60 +353,103 @@ function buildResumeChunks(resume: any) {
     const cleanTitle = safeText(title);
     const cleanText = safeText(text);
     if (!cleanText) return;
-    chunks.push({ id: nextId++, title: cleanTitle || `Section ${nextId - 1}`, text: cleanText });
+    chunks.push({
+      id: nextId++,
+      title: cleanTitle || `Section ${nextId - 1}`,
+      text: cleanText,
+    });
   }
 
   const basics = resume?.basics || {};
-  pushChunk("Basics", [safeText(basics?.name), safeText(basics?.headline), safeText(basics?.location)].filter(Boolean).join(" | "));
+  pushChunk(
+    "Basics",
+    [
+      safeText(basics?.name),
+      safeText(basics?.headline),
+      safeText(basics?.location),
+    ].filter(Boolean).join(" | "),
+  );
   pushChunk("Summary", stripHtml(resume?.summary?.content || ""));
 
   const sections = resume?.sections || {};
-  const experienceItems = Array.isArray(sections?.experience?.items) ? sections.experience.items : [];
+  const experienceItems = Array.isArray(sections?.experience?.items)
+    ? sections.experience.items
+    : [];
   for (const item of experienceItems) {
     pushChunk(
-      `Experience: ${safeText(item?.company) || safeText(item?.position) || "Item"}`,
-      [safeText(item?.company), safeText(item?.position), safeText(item?.location), safeText(item?.period), stripHtml(item?.description || "")]
+      `Experience: ${
+        safeText(item?.company) || safeText(item?.position) || "Item"
+      }`,
+      [
+        safeText(item?.company),
+        safeText(item?.position),
+        safeText(item?.location),
+        safeText(item?.period),
+        stripHtml(item?.description || ""),
+      ]
         .filter(Boolean)
-        .join("\n")
+        .join("\n"),
     );
   }
 
-  const projectItems = Array.isArray(sections?.projects?.items) ? sections.projects.items : [];
+  const projectItems = Array.isArray(sections?.projects?.items)
+    ? sections.projects.items
+    : [];
   for (const item of projectItems) {
     pushChunk(
       `Project: ${safeText(item?.name) || "Item"}`,
-      [safeText(item?.name), safeText(item?.period), stripHtml(item?.description || "")]
+      [
+        safeText(item?.name),
+        safeText(item?.period),
+        stripHtml(item?.description || ""),
+      ]
         .filter(Boolean)
-        .join("\n")
+        .join("\n"),
     );
   }
 
-  const educationItems = Array.isArray(sections?.education?.items) ? sections.education.items : [];
+  const educationItems = Array.isArray(sections?.education?.items)
+    ? sections.education.items
+    : [];
   for (const item of educationItems) {
     pushChunk(
       `Education: ${safeText(item?.school) || "Item"}`,
-      [safeText(item?.school), safeText(item?.degree), safeText(item?.area), safeText(item?.period), stripHtml(item?.description || "")]
+      [
+        safeText(item?.school),
+        safeText(item?.degree),
+        safeText(item?.area),
+        safeText(item?.period),
+        stripHtml(item?.description || ""),
+      ]
         .filter(Boolean)
-        .join("\n")
+        .join("\n"),
     );
   }
 
-  const skillItems = Array.isArray(sections?.skills?.items) ? sections.skills.items : [];
+  const skillItems = Array.isArray(sections?.skills?.items)
+    ? sections.skills.items
+    : [];
   if (skillItems.length > 0) {
     pushChunk(
       "Skills",
       skillItems
         .map((item: any) => safeText(item?.name))
         .filter(Boolean)
-        .join(", ")
+        .join(", "),
     );
   }
 
-  if (chunks.length === 0) pushChunk("Resume", "No structured resume content available.");
+  if (chunks.length === 0) {
+    pushChunk("Resume", "No structured resume content available.");
+  }
   return chunks;
 }
 
-function pickTopChunks(query: string, chunks: Array<{ id: number; title: string; text: string }>, topK = 4) {
+function pickTopChunks(
+  query: string,
+  chunks: Array<{ id: number; title: string; text: string }>,
+  topK = 4,
+) {
   const querySet = new Set(tokenize(query));
   return chunks
     .map((chunk) => {
@@ -342,116 +465,90 @@ function pickTopChunks(query: string, chunks: Array<{ id: number; title: string;
 
 async function getRuntimeContext() {
   const resume = await readResumeJson();
-  return { profile: normalizeProfile(resume), chunks: buildResumeChunks(resume) };
+  return {
+    profile: normalizeProfile(resume),
+    chunks: buildResumeChunks(resume),
+  };
 }
 
-function buildMessages(profile: any, userMessage: string, history: ChatHistoryItem[], context: string) {
+function buildMessages(
+  profile: any,
+  userMessage: string,
+  history: ChatHistoryItem[],
+  context: string,
+) {
   const systemPrompt = [
     `你是“${profile.name}”的 AI 名片助手，目标是向用户准确介绍该候选人的简历信息。`,
     "你必须严格依据提供的简历资料回答，禁止编造不存在的事实。",
     "如果信息缺失，请明确说明“资料中未提供该信息”。",
-    "回答语言使用中文，风格专业、简洁、客观。"
+    "回答语言使用中文，风格专业、简洁、客观。",
   ].join("");
 
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
-    { role: "system", content: `简历资料如下：\n${context}` }
+    { role: "system", content: `简历资料如下：\n${context}` },
   ];
 
   for (const item of history.slice(-8)) {
-    if (item && (item.role === "user" || item.role === "assistant") && typeof item.content === "string") {
-      messages.push({ role: item.role, content: item.content } as ChatCompletionMessageParam);
+    if (
+      item && (item.role === "user" || item.role === "assistant") &&
+      typeof item.content === "string"
+    ) {
+      messages.push(
+        {
+          role: item.role,
+          content: item.content,
+        } as ChatCompletionMessageParam,
+      );
     }
   }
   messages.push({ role: "user", content: userMessage });
   return messages;
 }
 
+const DEFAULT_PROVIDER: ChatProvider = DEFAULT_CHAT_PROVIDER === "zhipu"
+  ? "zhipu"
+  : "kimi";
+const PROVIDER_CONFIGS: Record<ChatProvider, ProviderConfig> = {
+  kimi: {
+    provider: "kimi",
+    apiKey: MOONSHOT_API_KEY,
+    baseURL: MOONSHOT_BASE_URL,
+    model: MOONSHOT_MODEL,
+  },
+  zhipu: {
+    provider: "zhipu",
+    apiKey: ZHIPU_API_KEY,
+    baseURL: ZHIPU_BASE_URL,
+    model: ZHIPU_MODEL,
+  },
+};
+
 function createError(message: string, code: string) {
   return Object.assign(new Error(message), { code });
 }
 
-function resolveProvider(input: unknown): ChatProvider {
-  const normalized = String(input || "").trim().toLowerCase();
-  if (!normalized) return DEFAULT_CHAT_PROVIDER === "zhipu" ? "zhipu" : "kimi";
-  if (normalized === "kimi" || normalized === "zhipu") return normalized;
-  throw createError(`Unsupported provider: ${normalized}`, "INVALID_PROVIDER");
-}
-
-function getProviderConfig(provider: ChatProvider): ProviderConfig {
-  if (provider === "zhipu") {
-    return { provider, apiKey: ZHIPU_API_KEY, baseURL: ZHIPU_BASE_URL, model: ZHIPU_MODEL };
-  }
-  return { provider: "kimi", apiKey: MOONSHOT_API_KEY, baseURL: MOONSHOT_BASE_URL, model: MOONSHOT_MODEL };
-}
-
-function assertProviderConfig(config: ProviderConfig) {
-  const missingFields: string[] = [];
-  if (!config.apiKey) missingFields.push("apiKey");
-  if (!config.baseURL) missingFields.push("baseURL");
-  if (!config.model) missingFields.push("model");
-  if (missingFields.length > 0) {
-    throw createError(`Provider config missing for ${config.provider}: ${missingFields.join(", ")}`, "MODEL_CONFIG_MISSING");
-  }
-}
-
-function getOpenAIClient(config: ProviderConfig) {
-  const cacheKey = `${config.provider}|${config.baseURL}|${config.apiKey}`;
-  const cached = openAIClients.get(cacheKey);
-  if (cached) return cached;
-  const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
-  openAIClients.set(cacheKey, client);
-  return client;
-}
-
-function extractAssistantText(completion: any) {
-  const choice = completion?.choices?.[0];
-  const content = choice?.message?.content;
-  if (typeof content === "string" && content.trim()) return content.trim();
-
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part: any) => {
-        if (!part) return "";
-        if (typeof part === "string") return part;
-        if (typeof part.text === "string") return part.text;
-        return "";
-      })
-      .join("")
-      .trim();
-    if (text) return text;
-  }
-
-  const refusal = choice?.message?.refusal;
-  if (typeof refusal === "string" && refusal.trim()) return refusal.trim();
-
-  if (typeof completion?.output_text === "string" && completion.output_text.trim()) {
-    return completion.output_text.trim();
-  }
-
-  return "";
-}
-
-async function callChatCompletion(messages: ChatCompletionMessageParam[], provider: ChatProvider, reqId: string) {
-  const config = getProviderConfig(provider);
+async function callChatCompletion(
+  messages: ChatCompletionMessageParam[],
+  provider: ChatProvider,
+  reqId: string,
+) {
+  const config = getProviderConfig(provider, PROVIDER_CONFIGS);
   assertProviderConfig(config);
-  const client = getOpenAIClient(config);
   try {
-    const completion = await client.chat.completions.create({
-      model: config.model,
+    const text = await callCompatibleCompletion({
+      provider,
+      config,
+      messages,
       temperature: 0.3,
-      max_tokens: GUARD_CONFIG.maxOutputTokens,
-      messages
-    });
-    const text = extractAssistantText(completion);
+      maxTokens: GUARD_CONFIG.maxOutputTokens,
+    }, openAIClients);
     if (text) return text;
 
     logError("AI_CHAT", "Empty completion content", {
       requestId: reqId,
       provider: config.provider,
       model: config.model,
-      finishReason: completion?.choices?.[0]?.finish_reason,
-      choiceCount: Array.isArray(completion?.choices) ? completion.choices.length : 0
     });
     return "暂时没有可用回复。";
   } catch (error) {
@@ -460,13 +557,19 @@ async function callChatCompletion(messages: ChatCompletionMessageParam[], provid
       provider: config.provider,
       model: config.model,
       networkLike: isNetworkLikeError(error),
-      error: serializeError(error)
+      error: serializeError(error),
     });
     throw error;
   }
 }
 function sseEvent(event: string, payload: unknown) {
-  return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`);
+  return encoder.encode(
+    `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`,
+  );
+}
+
+function sseComment(comment: string) {
+  return encoder.encode(`: ${comment}\n\n`);
 }
 
 function streamChat(
@@ -475,15 +578,48 @@ function streamChat(
   reqId: string,
   provider: ChatProvider,
   signal?: AbortSignal,
-  onClose?: () => void
+  onClose?: () => void,
 ) {
-  const config = getProviderConfig(provider);
+  const config = getProviderConfig(provider, PROVIDER_CONFIGS);
   assertProviderConfig(config);
-  const client = getOpenAIClient(config);
+  const { stream, telemetry } = createProviderStream(
+    {
+      provider,
+      config,
+      messages,
+      temperature: 0.3,
+      maxTokens: GUARD_CONFIG.maxOutputTokens,
+      signal,
+    },
+    openAIClients,
+  );
 
   return new ReadableStream({
     async start(controller) {
       let closed = false;
+      const streamStart = Date.now();
+      let firstTokenAt = 0;
+      let tokenEventCount = 0;
+      let lastTokenAt = 0;
+      const tokenGapsMs: number[] = [];
+      let streamErrorCode = "";
+      let streamErrorMessage = "";
+
+      const keepAlive = setInterval(() => {
+        safeEnqueue(sseComment("ping"));
+      }, 15000);
+
+      const safeEnqueue = (chunk: Uint8Array) => {
+        if (closed) return false;
+        try {
+          controller.enqueue(chunk);
+          return true;
+        } catch {
+          closed = true;
+          return false;
+        }
+      };
+
       const safeClose = () => {
         if (closed) return;
         closed = true;
@@ -500,44 +636,104 @@ function streamChat(
           return;
         }
 
-        controller.enqueue(sseEvent("refs", { references: refs.map((item) => ({ title: item.title, score: item.score })) }));
-        const stream = await client.chat.completions.create(
-          {
-            model: config.model,
-            temperature: 0.3,
-            max_tokens: GUARD_CONFIG.maxOutputTokens,
-            messages,
-            stream: true
-          },
-          { signal }
-        );
-
-        for await (const chunk of stream) {
-          if (signal?.aborted) break;
-          const delta = chunk.choices?.[0]?.delta?.content;
-          if (delta) controller.enqueue(sseEvent("token", { delta }));
+        if (
+          !safeEnqueue(
+            sseEvent("refs", {
+              references: refs.map((item) => ({
+                title: item.title,
+                score: item.score,
+              })),
+            }),
+          )
+        ) {
+          return;
         }
 
-        if (!signal?.aborted) controller.enqueue(sseEvent("done", { requestId: reqId }));
+        for await (const event of stream) {
+          if (signal?.aborted) break;
+          if (event.type === "token") {
+            const now = Date.now();
+            tokenEventCount += 1;
+            if (!firstTokenAt) firstTokenAt = now;
+            if (lastTokenAt) tokenGapsMs.push(now - lastTokenAt);
+            lastTokenAt = now;
+            if (!safeEnqueue(sseEvent("token", { delta: event.delta }))) break;
+            continue;
+          }
+          if (event.type === "error") {
+            streamErrorCode = event.code || "PROVIDER_STREAM_FAILED";
+            streamErrorMessage = event.message || "流式响应失败";
+            safeEnqueue(
+              sseEvent("error", {
+                message: streamErrorMessage,
+                code: streamErrorCode,
+                requestId: reqId,
+              }),
+            );
+            break;
+          }
+          if (event.type === "done") {
+            safeEnqueue(sseEvent("done", { requestId: reqId }));
+            break;
+          }
+        }
       } catch (error) {
         if (signal?.aborted || isAbortLikeError(error)) {
           safeClose();
           return;
         }
+        streamErrorCode = (error as { code?: string })?.code ||
+          "PROVIDER_STREAM_RUNTIME_ERROR";
+        streamErrorMessage = error instanceof Error
+          ? error.message
+          : "流式响应失败";
         logError("AI_STREAM", "Chat stream failed", {
           requestId: reqId,
           provider: config.provider,
           model: config.model,
+          providerMode: telemetry.providerMode,
+          fallbackReason: telemetry.fallbackReason,
           networkLike: isNetworkLikeError(error),
-          error: serializeError(error)
+          error: serializeError(error),
         });
-        const message = error instanceof Error ? error.message : "流式响应失败";
-        controller.enqueue(sseEvent("error", { message, requestId: reqId }));
+        safeEnqueue(
+          sseEvent("error", {
+            message: streamErrorMessage,
+            code: streamErrorCode,
+            requestId: reqId,
+          }),
+        );
       } finally {
+        clearInterval(keepAlive);
+        const streamDurationMs = Date.now() - streamStart;
+        const firstTokenLatencyMs = firstTokenAt
+          ? firstTokenAt - streamStart
+          : streamDurationMs;
+        const tokenGapMsP95 = percentile(tokenGapsMs, 95);
+        const degradedStreaming =
+          tokenEventCount <= GUARD_CONFIG.streamMinTokenEvents ||
+          firstTokenLatencyMs > GUARD_CONFIG.streamFirstTokenMaxLatencyMs;
+        logInfo("STREAM_QUALITY", "Stream completed", {
+          request_id: reqId,
+          provider: config.provider,
+          model: config.model,
+          provider_mode: telemetry.providerMode,
+          fallback_reason: telemetry.fallbackReason,
+          first_token_latency_ms: firstTokenLatencyMs,
+          token_event_count: tokenEventCount,
+          token_gap_ms_p95: tokenGapMsP95,
+          stream_duration_ms: streamDurationMs,
+          degraded_streaming: degradedStreaming,
+          first_token_latency_threshold_ms:
+            GUARD_CONFIG.streamFirstTokenMaxLatencyMs,
+          min_token_events_threshold: GUARD_CONFIG.streamMinTokenEvents,
+          error_code: streamErrorCode || null,
+          error_message: streamErrorMessage || null,
+        });
         onClose?.();
         safeClose();
       }
-    }
+    },
   });
 }
 
@@ -549,10 +745,20 @@ async function parseChatPayload(request: Request) {
   return { userMessage, history, provider };
 }
 
-async function prepareChatContext(userMessage: string, history: ChatHistoryItem[]) {
-  const inputDecision = await validateChatInput(userMessage, history.length, GUARD_CONFIG);
+async function prepareChatContext(
+  userMessage: string,
+  history: ChatHistoryItem[],
+) {
+  const inputDecision = await validateChatInput(
+    userMessage,
+    history.length,
+    GUARD_CONFIG,
+  );
   if (!inputDecision.ok) {
-    throw createError(inputDecision.message || "请求参数不合法", inputDecision.code || "INVALID_REQUEST");
+    throw createError(
+      inputDecision.message || "请求参数不合法",
+      inputDecision.code || "INVALID_REQUEST",
+    );
   }
 
   const { profile, chunks } = await getRuntimeContext();
@@ -573,7 +779,10 @@ async function handleProfile(request: Request, reqId: string) {
     if (isAbortLikeError(error) || request.signal.aborted) {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
-    logError("API_PROFILE", "Profile request failed", { requestId: reqId, error: serializeError(error) });
+    logError("API_PROFILE", "Profile request failed", {
+      requestId: reqId,
+      error: serializeError(error),
+    });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "RUNTIME_PROFILE_ERROR";
     return errorResponse(reqId, 500, code, message);
@@ -583,24 +792,34 @@ async function handleProfile(request: Request, reqId: string) {
 async function handleChat(request: Request, reqId: string) {
   try {
     const { userMessage, history, provider } = await parseChatPayload(request);
-    const resolvedProvider = resolveProvider(provider);
+    const resolvedProvider = resolveProvider(provider, DEFAULT_PROVIDER);
     const { refs, messages } = await prepareChatContext(userMessage, history);
     const reply = await callChatCompletion(messages, resolvedProvider, reqId);
     return jsonResponse({
       reply,
       provider: resolvedProvider,
-      references: refs.map((item) => ({ title: item.title, score: item.score })),
-      requestId: reqId
+      references: refs.map((item) => ({
+        title: item.title,
+        score: item.score,
+      })),
+      requestId: reqId,
     });
   } catch (error) {
     logError("API_CHAT", "Chat request failed", {
       requestId: reqId,
       networkLike: isNetworkLikeError(error),
-      error: serializeError(error)
+      error: serializeError(error),
     });
     const message = error instanceof Error ? error.message : "服务异常";
     const code = (error as { code?: string })?.code || "CHAT_RUNTIME_ERROR";
-    const status = ["INVALID_REQUEST", "MESSAGE_TOO_LARGE", "HISTORY_TOO_LARGE", "INVALID_PROVIDER"].includes(code) ? 400 : 500;
+    const status = [
+        "INVALID_REQUEST",
+        "MESSAGE_TOO_LARGE",
+        "HISTORY_TOO_LARGE",
+        "INVALID_PROVIDER",
+      ].includes(code)
+      ? 400
+      : 500;
     return errorResponse(reqId, status, code, message);
   }
 }
@@ -608,13 +827,13 @@ async function handleChat(request: Request, reqId: string) {
 async function handleChatStream(request: Request, reqId: string) {
   try {
     const { userMessage, history, provider } = await parseChatPayload(request);
-    const resolvedProvider = resolveProvider(provider);
+    const resolvedProvider = resolveProvider(provider, DEFAULT_PROVIDER);
     const { refs, messages } = await prepareChatContext(userMessage, history);
     const streamController = new AbortController();
     const timeout = setTimeout(() => {
       logError("API_CHAT_STREAM", "Stream duration guard reached", {
         requestId: reqId,
-        maxSeconds: GUARD_CONFIG.streamMaxDurationSeconds
+        maxSeconds: GUARD_CONFIG.streamMaxDurationSeconds,
       });
       streamController.abort("STREAM_DURATION_EXCEEDED");
     }, GUARD_CONFIG.streamMaxDurationSeconds * 1000);
@@ -623,78 +842,148 @@ async function handleChatStream(request: Request, reqId: string) {
       () => {
         streamController.abort("REQUEST_ABORTED");
       },
-      { once: true }
+      { once: true },
     );
 
-    return new Response(streamChat(messages, refs, reqId, resolvedProvider, streamController.signal, () => clearTimeout(timeout)), {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        ...corsHeaders()
-      }
-    });
+    return new Response(
+      streamChat(
+        messages,
+        refs,
+        reqId,
+        resolvedProvider,
+        streamController.signal,
+        () => clearTimeout(timeout),
+      ),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "X-Accel-Buffering": "no",
+          ...corsHeaders(),
+        },
+      },
+    );
   } catch (error) {
     logError("API_CHAT_STREAM", "Chat stream request failed", {
       requestId: reqId,
       networkLike: isNetworkLikeError(error),
-      error: serializeError(error)
+      error: serializeError(error),
     });
     const message = error instanceof Error ? error.message : "服务异常";
-    const code = (error as { code?: string })?.code || "CHAT_STREAM_RUNTIME_ERROR";
-    const status = ["INVALID_REQUEST", "MESSAGE_TOO_LARGE", "HISTORY_TOO_LARGE", "INVALID_PROVIDER"].includes(code) ? 400 : 500;
+    const code = (error as { code?: string })?.code ||
+      "CHAT_STREAM_RUNTIME_ERROR";
+    const status = [
+        "INVALID_REQUEST",
+        "MESSAGE_TOO_LARGE",
+        "HISTORY_TOO_LARGE",
+        "INVALID_PROVIDER",
+      ].includes(code)
+      ? 400
+      : 500;
     return errorResponse(reqId, status, code, message);
   }
 }
 
 async function serveFrontend(pathname: string, reqId: string) {
   try {
-    const requested = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+    const requested = pathname === "/"
+      ? "index.html"
+      : pathname.replace(/^\/+/, "");
     const safePath = normalize(requested).replace(/^(\.\.[/\\])+/, "");
     const targetPath = join(frontendDistFsPath, safePath);
 
     const stat = await Deno.stat(targetPath).catch(() => null);
     if (stat?.isFile) {
       const data = await Deno.readFile(targetPath);
-      return new Response(data, { status: 200, headers: { "Content-Type": getMimeType(targetPath) } });
+      return new Response(data, {
+        status: 200,
+        headers: { "Content-Type": getMimeType(targetPath) },
+      });
     }
 
     const indexPath = join(frontendDistFsPath, "index.html");
     const indexData = await Deno.readFile(indexPath);
-    return new Response(indexData, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    return new Response(indexData, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
   } catch {
-    return errorResponse(reqId, 503, "FRONTEND_DIST_MISSING", "frontend/dist 不存在，请先执行 deno task build。");
+    return errorResponse(
+      reqId,
+      503,
+      "FRONTEND_DIST_MISSING",
+      "frontend/dist 不存在，请先执行 deno task build。",
+    );
   }
 }
 
-Deno.serve({ hostname: API_HOST, port: API_PORT }, async (request, info) => {
+export async function appHandler(
+  request: Request,
+  info: Deno.ServeHandlerInfo,
+) {
   const url = new URL(request.url);
   const reqId = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   const ip = extractClientIp(request, info?.remoteAddr);
 
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
-  if (request.method === "GET" && url.pathname === "/api/profile") return handleProfile(request, reqId);
-  if (request.method === "POST" && (url.pathname === "/api/chat" || url.pathname === "/api/chat/stream")) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+  if (request.method === "GET" && url.pathname === "/api/profile") {
+    return handleProfile(request, reqId);
+  }
+  if (
+    request.method === "POST" &&
+    (url.pathname === "/api/chat" || url.pathname === "/api/chat/stream")
+  ) {
     const decision = await abuseGuard.evaluate(ip);
     if (!decision.ok) {
-      logGuardRejection(reqId, url.pathname, ip, decision.code || "GUARD_REJECTED", decision.limitType || "unknown", decision.remaining ?? null);
+      logGuardRejection(
+        reqId,
+        url.pathname,
+        ip,
+        decision.code || "GUARD_REJECTED",
+        decision.limitType || "unknown",
+        decision.remaining ?? null,
+      );
       const headers: Record<string, string> = {};
-      if (decision.retryAfter) headers["Retry-After"] = String(decision.retryAfter);
-      return errorResponse(reqId, decision.status || 429, decision.code || "RATE_LIMIT_REJECTED", decision.message || "请求被拒绝", {
-        headers,
-        meta: { limitType: decision.limitType, remaining: decision.remaining }
-      });
+      if (decision.retryAfter) {
+        headers["Retry-After"] = String(decision.retryAfter);
+      }
+      return errorResponse(
+        reqId,
+        decision.status || 429,
+        decision.code || "RATE_LIMIT_REJECTED",
+        decision.message || "请求被拒绝",
+        {
+          headers,
+          meta: {
+            limitType: decision.limitType,
+            remaining: decision.remaining,
+          },
+        },
+      );
     }
     if (url.pathname === "/api/chat") return handleChat(request, reqId);
     return handleChatStream(request, reqId);
   }
 
-  if (MODE === "full" && request.method === "GET" && !url.pathname.startsWith("/api/")) {
+  if (
+    MODE === "full" && request.method === "GET" &&
+    !url.pathname.startsWith("/api/")
+  ) {
     return serveFrontend(url.pathname, reqId);
   }
 
   return errorResponse(reqId, 404, "NOT_FOUND", "Not Found");
-});
+}
 
-console.log(`Backend mode=${MODE} running at http://${API_HOST}:${API_PORT}`);
+export function startServer() {
+  const server = Deno.serve({ hostname: API_HOST, port: API_PORT }, appHandler);
+  console.log(`Backend mode=${MODE} running at http://${API_HOST}:${API_PORT}`);
+  return server;
+}
 
+if (import.meta.main) {
+  startServer();
+}

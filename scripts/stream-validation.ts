@@ -1,0 +1,203 @@
+import { startServer } from "../backend/main.ts";
+
+type Provider = "kimi" | "zhipu";
+
+type SampleResult = {
+  provider: Provider;
+  ok: boolean;
+  status: number;
+  tokenEvents: number;
+  firstTokenLatencyMs: number;
+  durationMs: number;
+  error: string;
+};
+
+function parseSseBlocks(buffer: string) {
+  const blocks = buffer.split(/\r?\n\r?\n/);
+  return { blocks: blocks.slice(0, -1), remaining: blocks.at(-1) || "" };
+}
+
+function parseEventBlock(block: string) {
+  const lines = block.split(/\r?\n/);
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+  }
+  const raw = dataLines.join("\n");
+  try {
+    return { event, data: raw ? JSON.parse(raw) : null };
+  } catch {
+    return { event, data: { raw } };
+  }
+}
+
+async function runSample(provider: Provider): Promise<SampleResult> {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort("timeout"), 120000);
+
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/chat/stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+      },
+      body: JSON.stringify({
+        provider,
+        message: "请介绍候选人的项目经验",
+        history: [],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const text = await response.text().catch(() => "");
+      return {
+        provider,
+        ok: false,
+        status: response.status,
+        tokenEvents: 0,
+        firstTokenLatencyMs: 0,
+        durationMs: Date.now() - start,
+        error: text || `HTTP_${response.status}`,
+      };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let tokenEvents = 0;
+    let firstTokenLatencyMs = 0;
+    let streamError = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const { blocks, remaining } = parseSseBlocks(buffer);
+      buffer = remaining;
+
+      for (const block of blocks) {
+        const parsed = parseEventBlock(block.trim());
+        if (parsed.event === "token") {
+          tokenEvents += 1;
+          if (!firstTokenLatencyMs) firstTokenLatencyMs = Date.now() - start;
+        }
+        if (parsed.event === "error") {
+          streamError = parsed.data?.message || parsed.data?.raw ||
+            "stream_error";
+        }
+      }
+    }
+
+    const durationMs = Date.now() - start;
+    return {
+      provider,
+      ok: !streamError && tokenEvents > 0,
+      status: response.status,
+      tokenEvents,
+      firstTokenLatencyMs,
+      durationMs,
+      error: streamError,
+    };
+  } catch (error) {
+    return {
+      provider,
+      ok: false,
+      status: 0,
+      tokenEvents: 0,
+      firstTokenLatencyMs: 0,
+      durationMs: Date.now() - start,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function summarize(results: SampleResult[]) {
+  const byProvider = new Map<Provider, SampleResult[]>();
+  for (const result of results) {
+    const list = byProvider.get(result.provider) || [];
+    list.push(result);
+    byProvider.set(result.provider, list);
+  }
+
+  const lines: string[] = [];
+  lines.push(`# Streaming Validation Report`);
+  lines.push("");
+  lines.push(`Date: ${new Date().toISOString()}`);
+  lines.push(`Total Samples: ${results.length}`);
+  lines.push("");
+
+  for (const provider of ["kimi", "zhipu"] as const) {
+    const list = byProvider.get(provider) || [];
+    const okCount = list.filter((x) => x.ok).length;
+    const avgToken = list.length
+      ? Math.round(list.reduce((s, x) => s + x.tokenEvents, 0) / list.length)
+      : 0;
+    const avgFirstLatency = list.length
+      ? Math.round(
+        list.reduce((s, x) => s + x.firstTokenLatencyMs, 0) / list.length,
+      )
+      : 0;
+
+    lines.push(`## ${provider}`);
+    lines.push(`- Samples: ${list.length}`);
+    lines.push(`- Successful Streams: ${okCount}`);
+    lines.push(`- Avg token_event_count: ${avgToken}`);
+    lines.push(`- Avg first_token_latency_ms: ${avgFirstLatency}`);
+    const failed = list.filter((x) => !x.ok);
+    if (failed.length > 0) {
+      lines.push(`- Failures:`);
+      for (const failure of failed.slice(0, 5)) {
+        lines.push(
+          `  - status=${failure.status}, error=${failure.error || "unknown"}`,
+        );
+      }
+    }
+    lines.push("");
+  }
+
+  lines.push("## Acceptance Check");
+  const total = results.length;
+  const lowToken = results.filter((x) => x.tokenEvents <= 1).length;
+  lines.push(`- token_event_count > 1 ratio: ${total - lowToken}/${total}`);
+  lines.push(
+    `- Note: This report is generated by scripts/stream-validation.ts`,
+  );
+
+  return lines.join("\n");
+}
+
+const server = startServer();
+await new Promise((resolve) => setTimeout(resolve, 1000));
+
+const providers: Provider[] = ["kimi", "zhipu"];
+const roundsPerProvider = 10;
+const results: SampleResult[] = [];
+
+try {
+  for (const provider of providers) {
+    for (let i = 0; i < roundsPerProvider; i += 1) {
+      const result = await runSample(provider);
+      results.push(result);
+      console.log(
+        `[sample] provider=${provider} idx=${
+          i + 1
+        }/${roundsPerProvider} ok=${result.ok} tokens=${result.tokenEvents} firstToken=${result.firstTokenLatencyMs}ms`,
+      );
+    }
+  }
+} finally {
+  await server.shutdown();
+}
+
+const report = summarize(results);
+const reportPath =
+  "openspec/changes/ensure-true-provider-streaming/verification.md";
+await Deno.writeTextFile(reportPath, report);
+console.log(`Report written to ${reportPath}`);
