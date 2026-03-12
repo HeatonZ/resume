@@ -15,7 +15,7 @@ RUN npm ci --prefix frontend
 
 # Build frontend assets and warm Deno cache for runtime startup.
 RUN deno task build
-RUN deno cache -A --unstable-kv backend/main.ts
+RUN deno cache backend/main.ts
 
 ENV API_HOST=0.0.0.0
 ENV API_PORT=8000
